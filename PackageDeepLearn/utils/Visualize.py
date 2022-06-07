@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from PackageDeepLearn.utils.DataIOTrans import DataIO,make_dir
+from .DataIOTrans import DataIO,make_dir
 import cv2,torch
 from torch.utils.tensorboard import SummaryWriter
 import tensorboard
@@ -70,7 +70,7 @@ def plot_network(model,logdir='./',comment='My_Network',shape=(8,3,512,512)):
     with SummaryWriter(log_dir=logdir,comment=comment) as w:
            w.add_graph(model, x)
 
-    #tensorboar --logdir=./logs
+    #tensorboard --logdir=./logs
 
 
 
