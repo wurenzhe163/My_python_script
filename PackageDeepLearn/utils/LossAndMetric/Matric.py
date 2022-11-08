@@ -1,6 +1,10 @@
 
 import torch,math
 import numpy as np
+from PackageDeepLearn.utils import DataIOTrans  # 写完修改相对路径
+import skimage.metrics as skm
+import cv2
+
 __all__ = ['SegmentationMetric']
 
 """
@@ -106,6 +110,46 @@ class SegmentationMetric(object):
     def reset(self):
         self.confusionMatrix = torch.zeros((self.numClass, self.numClass))
 
+class SimilarImages(object):
+    def __init__(self, NoiseImage,ClearImage,Backend=cv2.IMREAD_LOAD_GDAL):
+        """
+        采用CV2读取影像，需要定义Backend，适用于RGB影像，未经测试，使用时候需要注意
+        NoiseImage:通常认为是模型的输入。计算R2时候需要注意
+        ClearImage：通常认为是模型的输出。计算R2时候需要注意
+        Backend:cv2.IMREAD_LOAD_GDAL 适用于任意形式三通道tif，maybe多通道
+                cv2.IMREAD_ANYDEPTH  uint16 or uint8
+                cv2.IMREAD_COLOR     3通道BGR
+        """
+        self.NoiseImagePath = NoiseImage
+        self.ClearImagePath = ClearImage
+        self.Backend = Backend
+        self.NoiseImage = cv2.cvtColor(cv2.imread(self.NoiseImage,Backend),cv2.COLOR_BGR2RGB)
+        self.ClearImage = cv2.cvtColor(cv2.imread(self.ClearImage,Backend),cv2.COLOR_BGR2RGB)
+        # read-Img
+    def Caculate_MSE(self):
+        return skm.mean_squared_error(self.NoiseImage,self.ClearImage)
+    def Caculate_RMSE(self):
+        return np.sqrt(self.Caculate_MSE(self))
+    def Caculate_NormalizedRMSE(self):
+        return skm.normalized_root_mse(self.NoiseImage,self.ClearImage)
+    def Caculate_PSNR(self):
+        return skm.peak_signal_noise_ratio(self.NoiseImage,self.ClearImage)
+    # def Caculate_Kappa(self):
+
+    def Caculate_R2(self):
+        """R2_score用于衡量不同量纲条件下模型的好坏，也就是单位对于数值的影响"""
+        MSE = self.Caculate_MSE(self)
+        Var = np.var(self.ClearImage)
+        return 1-MSE/Var
+    def Caculate_SSIM(self):
+        return skm.structural_similarity(self.NoiseImage,self.ClearImage)
+    def Caculate_hausdorff_distance(self):
+        """豪斯多夫距离是在度量空间中任意两个集合之间定义的一种距离"""
+        return skm.hausdorff_distance(self.NoiseImage,self.ClearImage)
+    def Caculate_normalized_mutual_information(self):
+        """计算互信息熵"""
+        return skm.normalized_mutual_information(self.NoiseImage,self.ClearImage)
+
 # 测试内容
 if __name__ == '__main__':
     # 注意，使用该方法需要值连续
@@ -176,6 +220,4 @@ def MSSSIM(pre,gt,data_range=255,channel=3):
         spatial_dims=2,
         weights=None,
         K=(0.01, 0.03),)
-    return MS_SSIM(pre, gt)
-
-
+    return 
