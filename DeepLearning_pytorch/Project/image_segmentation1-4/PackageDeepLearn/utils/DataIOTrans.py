@@ -44,7 +44,7 @@ class DataTrans(object):
             one_hot_label = one_hot_codes[LabelImage]
         except IndexError:
             # pre treat cast 不连续值 到 连续值
-            Unique_code = np.unique(LabelImage)
+            Unique_code = np.unique(LabelImage) #去除重复数字并排序
             Objectives_code = np.arange(len(Unique_code))
             for i, j in zip(Unique_code, Objectives_code):
                 LabelImage[LabelImage == i] = j
@@ -69,7 +69,7 @@ class DataTrans(object):
         return np.argmax(OneHotImage,axis=-1)
 
     @staticmethod
-    def data_augmentation(ToTensor=False,ColorJitter:tuple=None,Resize=None,Contrast=None,Equalize=None,HFlip=None,Invert=None,VFlip=None,
+    def data_augmentation(ToTensor=False,Resize=None,Contrast=None,Equalize=None,HFlip=None,Invert=None,VFlip=None,
                           Rotation=None,Grayscale=None,Perspective=None,Erasing=None,Crop=None,
                           ): # dHFlip=None
         """
@@ -77,7 +77,6 @@ class DataTrans(object):
         DataAgumentation 2021/03/23 by Mr.w
         -------------------------------------------------------------
         ToTensor : False/True , 注意转为Tensor，通道会放在第一维
-        ColorJitter: tulpe  brightness-->0-1 ,contrast-->0-1,  saturation-->0-1, hue(色调抖动)-->0-0.5
         Resize : tuple-->(500,500)
         Contrast : 0-1 -->图像被自动对比度的可能,支持维度1-3
         Equalize : 0-1 -->图像均衡可能性 , 仅支持uint8
@@ -97,9 +96,7 @@ class DataTrans(object):
         if ToTensor == True:
             trans_totensor = transforms.ToTensor()
             train_transform.append(trans_totensor)
-        if ColorJitter != None:
-            train_transform.append(torchvision.transforms.ColorJitter(
-                ColorJitter[0], ColorJitter[1], ColorJitter[2], ColorJitter[3]))
+
         if Resize != None:
             trans_Rsize = transforms.Resize(Resize)  # Resize=(500,500)
             train_transform.append(trans_Rsize)
@@ -201,13 +198,13 @@ class DataIO(object):
         return [os.path.join(DATA_DIR, each) for each in path]
 
     @staticmethod
-    def read_IMG(path,flag=0):
+    def read_IMG(path):
         """
         读为一个numpy数组,读取所有波段
         对于RGB图像仍然是RGB通道，cv2.imread读取的是BGR通道
         path : img_path as:c:/xx/xx.tif
-        flag:0不反回坐标，1返回坐标
         """
+
         dataset = gdal.Open(path)
         if dataset == None:
             raise Exception("Unable to read the data file")
@@ -215,12 +212,9 @@ class DataIO(object):
         nXSize = dataset.RasterXSize  # 列数
         nYSize = dataset.RasterYSize  # 行数
         bands = dataset.RasterCount  # 波段
-        Raster1 = dataset.GetRasterBand(1)
-        if flag==1:
-            img_transf = dataset.GetGeoTransform()  # 仿射矩阵
-            img_proj = dataset.GetProjection()  # 地图投影信息
+        Raster1 = dataset.GetRasterBand(1) #波段从1开始计数
 
-        if Raster1.DataType == 1 :
+        if Raster1.DataType == 1:
             datatype = np.uint8
         elif Raster1.DataType == 2:
             datatype = np.uint16
@@ -228,27 +222,24 @@ class DataIO(object):
             datatype = float
 
         data = np.zeros([nYSize, nXSize, bands], dtype=datatype)
-        for i in range(bands):
+        for i in range(bands): #  [0,1,2],而波段是从1开始计数，所以后面要加1
             band = dataset.GetRasterBand(i + 1)
             data[:, :, i] = band.ReadAsArray(0, 0, nXSize, nYSize)  # .astype(np.complex)
-        if flag==0:
-            return data
-        elif flag==1:
-            return data,img_transf,img_proj
-        else:
-            print('None Output, please check')
+            #冒号两边没有指认，默认全部。取出单波段图像
+
+        return data
 
 
 
     @staticmethod
-    def save_Gdal(img_array, SavePath, transf=False, img_transf=None, img_proj=None):
+    def save_Gdal(img_array, SavePath, img_transf=False, coordnates=None, img_proj=None):
         """
 
         Args:
             img_array:  [H,W,C] , RGB色彩，不限通道深度
             SavePath:
-            transf: 是否进行投影
-            img_transf: 仿射变换
+            img_transf: 是否进行投影
+            coordnates: 仿射变换
             img_proj: 投影信息
 
         Returns: 0
@@ -272,8 +263,8 @@ class DataIO(object):
         driver = gdal.GetDriverByName("GTiff")  # 创建文件驱动
         dataset = driver.Create(SavePath, im_width, im_height, img_bands, datatype)
 
-        if transf:
-            dataset.SetGeoTransform(img_transf)  # 写入仿射变换参数
+        if img_transf:
+            dataset.SetGeoTransform(coordnates)  # 写入仿射变换参数
             dataset.SetProjection(img_proj)  # 写入投影
 
         # 写入影像数据
@@ -334,7 +325,7 @@ class SegmentDataset(torch.utils.data.Dataset):
         return image2, mask2
 
     def visu(self):
-        from PackageDeepLearn.utils import Visualize
+        from image_segmentation.PackageDeepLearn.utils import Visualize
         Visualize.visualize(
             Befor_Argu=self.image,
             After_Argu=self.image2.permute(1, 2, 0).numpy().astype(np.uint8),
@@ -346,4 +337,10 @@ class SegmentDataset(torch.utils.data.Dataset):
         return len(self.image_paths)
 
 
-
+if __name__ == '__main__':
+    x = DataTrans()
+    m = torch.tensor([[0,0,0,0,0,0],[2,2,2,2,2,2],[2,2,2,2,2,2]])
+    y = x.OneHotEncode(m,4)
+    print(m.shape)
+    print(y)
+    print(y.shape)

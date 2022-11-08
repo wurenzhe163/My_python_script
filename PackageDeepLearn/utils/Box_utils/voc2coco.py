@@ -1,206 +1,182 @@
-#!/usr/bin/python
-
+#coding:utf-8
+ 
 # pip install lxml
 
-import sys
 import os
-import json
-import xml.etree.ElementTree as ET
 import glob
+import json
 import argparse
+import numpy as np
+import xml.etree.ElementTree as ET
 from shutil import copyfile
 
+
 START_BOUNDING_BOX_ID = 1
-PRE_DEFINE_CATEGORIES = None
-
-
-# If necessary, pre-define category and its id
-#  PRE_DEFINE_CATEGORIES = {"aeroplane": 1, "bicycle": 2, "bird": 3, "boat": 4,
-#  "bottle":5, "bus": 6, "car": 7, "cat": 8, "chair": 9,
-#  "cow": 10, "diningtable": 11, "dog": 12, "horse": 13,
-#  "motorbike": 14, "person": 15, "pottedplant": 16,
-#  "sheep": 17, "sofa": 18, "train": 19, "tvmonitor": 20}
-
 
 def get(root, name):
-    vars = root.findall(name)
-    return vars
+    return root.findall(name)
 
 
 def get_and_check(root, name, length):
     vars = root.findall(name)
     if len(vars) == 0:
-        raise ValueError("Can not find %s in %s." % (name, root.tag))
+        raise NotImplementedError('Can not find %s in %s.'%(name, root.tag))
     if length > 0 and len(vars) != length:
-        raise ValueError(
-            "The size of %s is supposed to be %d, but is %d."
-            % (name, length, len(vars))
-        )
+        raise NotImplementedError('The size of %s is supposed to be %d, but is %d.'%(name, length, len(vars)))
     if length == 1:
         vars = vars[0]
     return vars
 
 
-def get_filename_as_int(filename):
-    try:
-        filename = filename.replace("\\", "/")
-        filename = os.path.splitext(os.path.basename(filename))[0]
-        return int(filename)
-    except:
-        raise ValueError("Filename %s is supposed to be an integer." % (filename))
-
-
-def get_categories(xml_files):
-    """Generate category name to id mapping from a list of xml files.
-
-    Arguments:
-        xml_files {list} -- A list of xml file paths.
-
-    Returns:
-        dict -- category name to id mapping.
-    """
-    classes_names = []
-    for xml_file in xml_files:
-        tree = ET.parse(xml_file)
-        root = tree.getroot()
-        for member in root.findall("object"):
-            classes_names.append(member[0].text)
-    classes_names = list(set(classes_names))
-    classes_names.sort()
-    return {name: i for i, name in enumerate(classes_names)}
-
-
-def convert(xml_files, json_file):
-    json_dict = {"images": [], "type": "instances", "annotations": [], "categories": []}
-    if PRE_DEFINE_CATEGORIES is not None:
-        categories = PRE_DEFINE_CATEGORIES
-    else:
-        categories = get_categories(xml_files)
+def convert(xml_list, json_file):
+    json_dict = {"info":['none'], "license":['none'], "images": [], "annotations": [], "categories": []}
+    categories = pre_define_categories.copy()
     bnd_id = START_BOUNDING_BOX_ID
-    for xml_file in xml_files:
-        tree = ET.parse(xml_file)
+    all_categories = {}
+    for index, line in enumerate(xml_list):
+        # print("Processing %s"%(line))
+        xml_f = line
+        tree = ET.parse(xml_f)
         root = tree.getroot()
-        path = get(root, "path")
-        if len(path) == 1:
-            filename = os.path.basename(path[0].text)
-        elif len(path) == 0:
-            filename = get_and_check(root, "filename", 1).text
-        else:
-            raise ValueError("%d paths found in %s" % (len(path), xml_file))
-        ## The filename must be a number
-        image_id = get_filename_as_int(filename)
-        size = get_and_check(root, "size", 1)
-        width = int(get_and_check(size, "width", 1).text)
-        height = int(get_and_check(size, "height", 1).text)
-        image = {
-            "file_name": filename,
-            "height": height,
-            "width": width,
-            "id": image_id,
-        }
-        json_dict["images"].append(image)
-        ## Currently we do not support segmentation.
+
+        filename = os.path.basename(xml_f)[:-4] + ".jpg"
+
+        image_id = filename.split('.')[0][-3:]
+#         print('filename is {}'.format(image_id))
+
+        size = get_and_check(root, 'size', 1)
+        width = int(get_and_check(size, 'width', 1).text)
+        height = int(get_and_check(size, 'height', 1).text)
+        image = {'file_name': filename, 'height': height, 'width': width, 'id':image_id}
+        json_dict['images'].append(image)
+        ## Cruuently we do not support segmentation
         #  segmented = get_and_check(root, 'segmented', 1).text
         #  assert segmented == '0'
-        for obj in get(root, "object"):
-            category = get_and_check(obj, "name", 1).text
+        for obj in get(root, 'object'):
+            category = get_and_check(obj, 'name', 1).text
+            if category in all_categories:
+                all_categories[category] += 1
+            else:
+                all_categories[category] = 1
             if category not in categories:
-                new_id = len(categories)
+                if only_care_pre_define_categories:
+                    continue
+                new_id = len(categories) + 1
+                print("[warning] category '{}' not in 'pre_define_categories'({}), create new id: {} automatically".format(category, pre_define_categories, new_id))
                 categories[category] = new_id
             category_id = categories[category]
-            bndbox = get_and_check(obj, "bndbox", 1)
-            xmin = int(float(get_and_check(bndbox, "xmin", 1).text)) - 1
-            ymin = int(float(get_and_check(bndbox, "ymin", 1).text)) - 1
-            xmax = int(float(get_and_check(bndbox, "xmax", 1).text))
-            ymax = int(float(get_and_check(bndbox, "ymax", 1).text))
-            assert xmax > xmin
-            assert ymax > ymin
+            bndbox = get_and_check(obj, 'bndbox', 1)
+            xmin = int(float(get_and_check(bndbox, 'xmin', 1).text))
+            ymin = int(float(get_and_check(bndbox, 'ymin', 1).text))
+            xmax = int(float(get_and_check(bndbox, 'xmax', 1).text))
+            ymax = int(float(get_and_check(bndbox, 'ymax', 1).text))
+            assert(xmax > xmin), "xmax <= xmin, {}".format(line)
+            assert(ymax > ymin), "ymax <= ymin, {}".format(line)
             o_width = abs(xmax - xmin)
             o_height = abs(ymax - ymin)
-            ann = {
-                "area": o_width * o_height,
-                "iscrowd": 0,
-                "image_id": image_id,
-                "bbox": [xmin, ymin, o_width, o_height],
-                "category_id": category_id,
-                "id": bnd_id,
-                "ignore": 0,
-                "segmentation": [],
-            }
-            json_dict["annotations"].append(ann)
+            ann = {'area': o_width*o_height, 'iscrowd': 0, 'image_id':
+                   image_id, 'bbox':[xmin, ymin, o_width, o_height],
+                   'category_id': category_id, 'id': bnd_id, 'ignore': 0,
+                   'segmentation': []}
+            json_dict['annotations'].append(ann)
             bnd_id = bnd_id + 1
 
     for cate, cid in categories.items():
-        cat = {"supercategory": "none", "id": cid, "name": cate}
-        json_dict["categories"].append(cat)
+        cat = {'supercategory': 'none', 'id': cid, 'name': cate}
+        json_dict['categories'].append(cat)
 
-    os.makedirs(os.path.dirname(json_file), exist_ok=True)
-    json_fp = open(json_file, "w")
     json_str = json.dumps(json_dict, indent=1)
-    json_fp.write(json_str)
-    json_fp.close()
-def argparse_():
-    parser = argparse.ArgumentParser(
-        description="Convert Pascal VOC annotation to COCO format."
-    )
-    parser.add_argument("--xml_dir", default=r'C:\Users\SAR\Desktop\gitclone\deep-learning-for-image-processing\pytorch_object_detection\faster_rcnn\data\VOCdevkit\VOC2012\Annotations',
-                        help="Directory path to xml files.", type=str)
-    parser.add_argument('--img_dir','-i', default=None,
+
+    # json_fp = open(json_file, 'w')
+    # json_fp.write(json_str)
+    # json_fp.close()
+    with open(json_file, 'w', newline='\n') as f:
+        f.write(json_str)
+
+    print("------------create {} done--------------".format(json_file))
+    print("find {} categories: {} -->>> your pre_define_categories {}: {}".format(len(all_categories), all_categories.keys(), len(pre_define_categories), pre_define_categories.keys()))
+    print("category: id --> {}".format(categories))
+    print(categories.keys())
+    print(categories.values())
+
+def get_args():
+    # Training settings
+    parser = argparse.ArgumentParser(description='VOC2COCO transformation！')
+    parser.add_argument('--xml_dir','-x', default='./VOCdevkit/VOC2012/Annotations',
+                        help='xml_dir directory')
+    parser.add_argument('--img_dir','-i', default='./VOCdevkit/VOC2012/JPEGImages',
                         help='img_dir directory')
-    parser.add_argument("--json_dir", default=r'C:\Users\SAR\Desktop\gitclone\deep-learning-for-image-processing\pytorch_object_detection\faster_rcnn\data\VOCdevkit\VOC2012',
-                        help="Output COCO format json file.", type=str)
-    parser.add_argument('--ratio', type=float, default=[0.8, 0.1],
-                        nargs='+', metavar='', help='tain / val ratio ,leftover is test ')
-    parser.add_argument("--img_type", default='.jpg',
-                        help="Image endwith", type=str)
+    parser.add_argument('--img_type','-t', default='.jpg',
+                        help='img_dir directory')
+    parser.add_argument('--label_json','-l', default='./pascal_voc_classes.json',
+                        help='label json path')
+    parser.add_argument('--save_dir','-s', default='./COCO_dataset',
+                        help='save directory')
+    parser.add_argument('--ratio', type=float, default=[0.8, 0.1], nargs='+', metavar='',
+                        help='tain / val ratio ,leftover is test ')
     parser.add_argument("--port", default=52162)
     parser.add_argument("--mode", default='client')
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
+
+makedir = lambda path: None if os.path.exists(path) else os.makedirs(path)
 
 def transfer_img(xml_list,img_type,savepath):
     for i in xml_list:
         img_name = os.path.basename(i).split('.')[0] + img_type
-        img_path = os.path.join(args.img_dir ,img_name)
+        img_path = os.path.join(img_dir ,img_name)
         img_copy_path = os.path.join(savepath,img_name)
         copyfile(img_path, img_copy_path)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
 
+    args = get_args()
 
-
-    args =  argparse_()
+    xml_dir = args.xml_dir
+    img_dir = args.img_dir
+    img_type = args.img_type
+    label_json_path = args.label_json
+    save_dir = args.save_dir
+    makedir(save_dir)
+    makedir(save_dir + '/train')
+    makedir(save_dir + '/val')
+    makedir(save_dir + '/test')
     train_ratio = args.ratio[0]
     val_ratio = args.ratio[1]
     test_ratio = 1 - train_ratio - val_ratio # 可以为0
 
-    xml_files = glob.glob(os.path.join(args.xml_dir, "*.xml"))
+    # 训练数据的josn文件
+    save_json_train = save_dir + '/train.json'
+    # 验证数据的josn文件
+    save_json_val = save_dir + '/val.json'
+    # 验证数据的test文件
+    save_json_test = save_dir + '/test.json'
+    json_file = open(label_json_path, 'r')
+    pre_define_categories = json.load(json_file)
+    only_care_pre_define_categories = True
 
-    # If you want to do train/test split, you can pass a subset of xml files to convert function.
-    print("Number of xml files: {}".format(len(xml_files)))
+    print('xml_dir is {}'.format(xml_dir))
+    xml_list = glob.glob(xml_dir + "/*.xml")
+    xml_list = np.sort(xml_list)
+#     print('xml_list is {}'.format(xml_list))
+    np.random.seed(100)
+    np.random.shuffle(xml_list)
 
-    train_num = int(len(xml_files)*train_ratio)
-    val_num = int(len(xml_files)*val_ratio)
+    train_num = int(len(xml_list)*train_ratio)
+    val_num = int(len(xml_list)*val_ratio)
     print('训练样本数目是 {}'.format(train_num))
     print('验证样本数目是 {}'.format(val_num))
-    print('测试样本数目是 {}'.format(len(xml_files) - train_num - val_num))
-    xml_list_val = xml_files[:val_num]
-    xml_list_train = xml_files[val_num:train_num+val_num]
-    xml_list_test = xml_files[train_num+val_num:]
+    print('测试样本数目是 {}'.format(len(xml_list) - train_num - val_num))
+    xml_list_val = xml_list[:val_num]
+    xml_list_train = xml_list[val_num:train_num+val_num]
+    xml_list_test = xml_list[train_num+val_num:]
+    # 对训练数据集对应的xml进行coco转换
+    convert(xml_list_train, save_json_train)
+    # 对验证数据集的xml进行coco转换
+    convert(xml_list_val, save_json_val)
+    # 对测试数据集的xml进行coco转换
+    convert(xml_list_test, save_json_test)
 
-    convert(xml_list_train, args.json_dir + '/train.json')
-    convert(xml_list_val, args.json_dir + '/val.json')
-    convert(xml_list_test, args.json_dir + '/test.json')
-
-    print("Success: {}".format(args.json_dir))
-
-    if args.img_dir :
-        makedir = lambda path: None if os.path.exists(path) else os.makedirs(path)
-        img_type =  args.img_type
-        makedir(args.json_dir)
-        makedir(args.json_dir + '/train')
-        makedir(args.json_dir + '/val')
-        makedir(args.json_dir + '/test')
-        transfer_img(xml_list_train,img_type,savepath=args.json_dir + '/train')
-        transfer_img(xml_list_val,img_type,savepath=args.json_dir + '/val')
-        transfer_img(xml_list_test, img_type, savepath=args.json_dir + '/test')
+    # 对数据进行复制
+    transfer_img(xml_list_train,img_type,savepath=save_dir + '/train')
+    transfer_img(xml_list_val,img_type,savepath=save_dir + '/val')
+    transfer_img(xml_list_test, img_type, savepath=save_dir + '/test')

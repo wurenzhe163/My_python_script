@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/DeepLearning_pytorch/Project/Myopenmmlab" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/DeepLearning_pytorch/Project/cloud_matting" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/参考代码/CGANs/pytorch-CycleGAN-and-pix2pix" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/参考代码/closed_form_matting" vcs="Git" />
+  </component>
+</project>
