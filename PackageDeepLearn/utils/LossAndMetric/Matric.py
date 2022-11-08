@@ -111,7 +111,7 @@ class SegmentationMetric(object):
         self.confusionMatrix = torch.zeros((self.numClass, self.numClass))
 
 class SimilarImages(object):
-    def __init__(self, NoiseImage,ClearImage,Backend=cv2.IMREAD_LOAD_GDAL):
+    def __init__(self, NoiseImage,ClearImage,Backend=cv2.IMREAD_LOAD_GDAL,resize=False):
         """
         采用CV2读取影像，需要定义Backend，适用于RGB影像，未经测试，使用时候需要注意
         NoiseImage:通常认为是模型的输入。计算R2时候需要注意
@@ -123,8 +123,11 @@ class SimilarImages(object):
         self.NoiseImagePath = NoiseImage
         self.ClearImagePath = ClearImage
         self.Backend = Backend
-        self.NoiseImage = cv2.cvtColor(cv2.imread(self.NoiseImage,Backend),cv2.COLOR_BGR2RGB)
-        self.ClearImage = cv2.cvtColor(cv2.imread(self.ClearImage,Backend),cv2.COLOR_BGR2RGB)
+        self.NoiseImage = cv2.cvtColor(cv2.imread(self.NoiseImagePath,Backend),cv2.COLOR_BGR2RGB)
+        self.ClearImage = cv2.cvtColor(cv2.imread(self.ClearImagePath,Backend),cv2.COLOR_BGR2RGB)
+        if resize:
+            self.ClearImage = cv2.resize(self.ClearImage,
+                                         (self.NoiseImage.shape[1],self.NoiseImage.shape[0]),interpolation=cv2.INTER_AREA)
         # read-Img
     def Caculate_MSE(self):
         return skm.mean_squared_error(self.NoiseImage,self.ClearImage)
