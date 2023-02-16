@@ -149,6 +149,59 @@ class DataTrans(object):
         #     train_transform.append(Detect_RandomHorizontalFlip(p=dHFlip))
 
         return transforms.Compose(train_transform)
+
+    @staticmethod
+    def StandardScaler(array, mean, std):
+        """
+        Z-Norm
+        Args:
+            array: 矩阵 ndarray
+            mean: 均值 list
+            std: 方差 list
+        Returns:标准化后的矩阵
+        """
+        if len(array.shape) == 2:
+            return (array - mean) / std
+
+        elif len(array.shape) == 3:
+            array_ = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_[:, :, i] = (array[:, :, i] - mean[i]) / std[i]
+        return array_
+
+    @staticmethod
+    def MinMaxScaler(array, max, min):
+        '''归一化'''
+        if len(array.shape) == 2:
+            return (array - min) / (max-min)
+
+        elif len(array.shape) == 3:
+            array_ = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
+        return array_
+
+    @staticmethod
+    def MinMax_Standard(array, max:list, min:list,mean:list,std:list):
+        '''
+        先归一化，再标准化.
+        注意该标准化所用的mean和std均是归一化之后计算值
+        '''
+        if len(array.shape) == 2:
+            _ = (array - min) / (max - min)
+            return (_ - mean) / std
+
+        elif len(array.shape) == 3:
+            array_1 = np.zeros_like(array).astype(np.float64)
+            array_2 = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_1[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
+                array_2[:, :, i] = (array_1[:, :, i] - mean[i]) / std[i]
+        return array_2
+
     @staticmethod
     def copy_geoCoordSys(img_pos_path, img_none_path):
         '''
