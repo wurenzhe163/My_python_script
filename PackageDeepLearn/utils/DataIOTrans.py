@@ -82,9 +82,9 @@ class DataTrans(object):
         Contrast : 0-1 -->图像被自动对比度的可能,支持维度1-3
         Equalize : 0-1 -->图像均衡可能性 , 仅支持uint8
         HFlip : 0-1 --> 图像水平翻转
-        Invert : 0-1--> 随机翻转
+        Invert : 0-1--> 随机反转给定图像的颜色
         VFlip : 0-1 --> 图像垂直翻转
-        Rotation : 0-360 --> 随机旋转度数范围, as : 90 , [-90,90]
+        Rotation : 0-360 --> 随机旋转度数范围, as : 90 , [-90,90]，支持维度1-3
         Grayscale : 0-1 --> 随机转换为灰度图像
         Perspective : 0-1 --> 随机扭曲图像
         Erasing : 0-1 --> 随机擦除
@@ -100,9 +100,6 @@ class DataTrans(object):
         if ColorJitter != None:
             train_transform.append(torchvision.transforms.ColorJitter(
                 ColorJitter[0], ColorJitter[1], ColorJitter[2], ColorJitter[3]))
-        if Resize != None:
-            trans_Rsize = transforms.Resize(Resize)  # Resize=(500,500)
-            train_transform.append(trans_Rsize)
         if Contrast != None:
             trans_Rcontrast = transforms.RandomAutocontrast(p=Contrast)
             train_transform.append(trans_Rcontrast)
@@ -125,6 +122,9 @@ class DataTrans(object):
             train_transform.append(transforms.RandomErasing(p=Erasing,scale=(0.02, 0.33),ratio=(0.3, 3.3),value=0,inplace=False))
         if Crop != None:
             train_transform.append(transforms.RandomCrop(Crop,padding=None,pad_if_needed=False,fill=0,padding_mode='constant'))
+        if Resize != None:
+            trans_Rsize = transforms.Resize(Resize)  # Resize=(500,500)
+            train_transform.append(trans_Rsize)
 
         # class Detect_RandomHorizontalFlip(torch.nn.Module):
         #     """随机水平翻转图像以及bboxes

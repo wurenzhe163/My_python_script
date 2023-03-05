@@ -11,15 +11,16 @@ import torch
 import torch.optim as optim
 import numpy as np
 from torch.utils.data import DataLoader
-import u2net,Log_weights, slide_dataset,T_Net
+from tqdm import tqdm
+import os
 import pandas as pd
 import torch.nn as nn
 import torch.nn.functional as F
 
+import u2net,Log_weights, slide_dataset,T_Net
 from loss import losses, LearningRate, Ms_ssim
 from PackageDeepLearn.utils import OtherTools, DataIOTrans,Visualize
-from tqdm import tqdm
-import os
+
 
 # %%
 image_name = lambda path, endwith: sorted([os.path.join(path, f) for f in os.listdir(path) if f.endswith(endwith)])

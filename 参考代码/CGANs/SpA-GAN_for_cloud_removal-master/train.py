@@ -91,6 +91,8 @@ def train(config):
     for epoch in range(1, config.epoch + 1):
         epoch_start_time = time.time()
         for iteration, batch in enumerate(training_data_loader, 1):
+            # real_a_cpu是有云图像
+            # real_b_cpu是目标图像
             real_a_cpu, real_b_cpu, M_cpu = batch[0], batch[1], batch[2]
             real_a.data.resize_(real_a_cpu.size()).copy_(real_a_cpu)
             real_b.data.resize_(real_b_cpu.size()).copy_(real_b_cpu)

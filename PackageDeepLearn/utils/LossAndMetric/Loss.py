@@ -2,9 +2,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-def MSE(gt,pre,eps=0.0001):
+from PackageDeepLearn.utils.Architectures.Vgg19 import Vgg19
 
-    return torch.sqrt(torch.pow(pre - gt, 2) + eps).mean()
+def MSE(gt,pre):
+
+    return torch.sqrt(torch.pow(pre - gt, 2)).mean()
     #均方误差
 
 class FocalLoss(nn.Module):
@@ -42,7 +44,6 @@ def dice_loss(prediction, target):
 
     return 1 - ((2. * intersection + smooth) / (i_flat.sum() + t_flat.sum() + smooth))
 
-
 def calc_loss(prediction, target, bce_weight=0.5):
     """Calculating the loss and metrics
     Args:
@@ -59,7 +60,6 @@ def calc_loss(prediction, target, bce_weight=0.5):
     loss = bce * bce_weight + dice * (1 - bce_weight)
 
     return loss
-
 
 class TverskyLoss(nn.Module):
     '''
@@ -94,7 +94,6 @@ class TverskyLoss(nn.Module):
         Tversky = (TP + smooth) / (TP + alpha*FP + beta*FN + smooth)
 
         return 1 - Tversky
-
 
 def TverskyLoss_i(gt, pre, alpha=0.2, layerAttention=[2, 3], eps=1e-6, softmax=False, argmax=False):
     """
@@ -149,3 +148,157 @@ class L1_Charbonnier_loss(torch.nn.Module):
         error = torch.sqrt(diff * diff + self.eps)
         loss = torch.mean(error)
         return loss
+
+# RMAE(与label有关的比值损失)
+class Loss_MRAE(nn.Module):
+    def __init__(self):
+        super(Loss_MRAE, self).__init__()
+
+    def forward(self, outputs, label):
+        assert outputs.shape == label.shape
+        error = torch.abs(outputs - label) / torch.abs(label +1e-7)
+        mrae = torch.mean(error.reshape(-1))
+        return mrae
+
+# SmoothL1
+class SmoothL1Loss(nn.Module):
+    def __init__(self, size_average=None, reduce=None, reduction='mean', beta=1.0):
+        super(SmoothL1Loss, self).__init__()
+
+        self.criterion_SmoothL1 = torch.nn.SmoothL1Loss(size_average=size_average,
+                                                        reduce=reduce, reduction=reduction, beta=beta)
+
+    def __call__(self, outputs, label):
+        return self.criterion_SmoothL1(outputs, label)
+
+# Gan_loss
+class Adversarial_loss(nn.Module):
+    def __init__(self,
+                 gen:nn.Module,
+                 dis:nn.Module,
+                 total_iteration:int,
+                 loss_tag='origin',
+                 lr=0.0001,
+                 betas=(0.5,0.999),
+                 weight_decay=0.00001
+                ):
+        """
+        loss_tag: origin  --> 采用二元交叉熵误差
+                  WGAN-GP --> 推土机距离，以及逞罚全中
+                  LSGAN   --> 最小二乘距离
+        所用鉴别器结果不得激活
+        """
+        super().__init__()
+        # 载入模型
+        self.dis = dis.cuda()
+        self.gen = gen
+        self.loss_tag = loss_tag
+
+        # 为discriminator额外定义optimizer
+        self.opt_dis = torch.optim.Adam(self.dis.parameters(), lr=lr, betas=betas, weight_decay=weight_decay)
+        # 为discriminator额外定义scheduler
+        self.scheduler_dis = torch.optim.lr_scheduler.CosineAnnealingLR(self.opt_dis, total_iteration, eta_min=1e-6)
+        # SpA-GAN loss,采用Softplus进行激活，该函数类似Relu
+        self.criterionSoftplus = nn.Softplus()
+
+    # WGAN-GP 惩罚系数
+    def gradient_penalty(self, real_b, fake_b):
+        """
+        计算梯度惩罚项
+        """
+        batch_size = real_b.size(0)
+        # 生成随机权重
+        alpha = torch.rand(batch_size, 1, 1, 1).to(real_b.device)
+        # 计算随机线性插值
+        interpolates = (alpha * real_b + (1 - alpha) * fake_b).requires_grad_(True)
+        # 计算梯度
+        d_interpolates = self.dis(interpolates)
+        fake = torch.ones_like(d_interpolates).to(fake_b.device)
+        gradients = torch.autograd.grad(outputs=d_interpolates, inputs=interpolates,
+                          grad_outputs=fake, create_graph=True, retain_graph=True, only_inputs=True)[0]
+        # 计算梯度范数
+        gradients_norm = gradients.view(batch_size, -1).norm(2, dim=1)
+        # 计算梯度惩罚项
+        penalty = ((gradients_norm - 1) ** 2).mean()
+
+        return penalty
+
+    def D_loss(self,real_b,fake_b):
+        '''
+        real_b : target
+        fake_b : output
+        '''
+        self.opt_dis.zero_grad()
+        pred_fake = self.dis.forward(fake_b.detach())# 对生成数据detach，禁止生成器更新。（因为生成数据是生成器获得的）
+        pred_real = self.dis.forward(real_b)
+
+        if self.loss_tag == 'origin':
+            # 常规GAN loss采用二元交叉熵误差
+            self.criterion = nn.BCEWithLogitsLoss()
+            loss_d_fake = self.criterion(pred_fake, torch.zeros_like(pred_fake))
+            loss_d_real = self.criterion(pred_real, torch.ones_like(pred_real))
+            loss_d = (loss_d_fake + loss_d_real) / 2
+        elif self.loss_tag == 'WGAN-GP':
+            gradient_penalty = self.gradient_penalty(real_b, fake_b)
+            loss_d_fake = pred_fake.mean()
+            loss_d_real = pred_real.mean()
+            loss_d =  loss_d_fake - loss_d_real + 10 * gradient_penalty
+        elif self.loss_tag == 'LSGAN':
+            loss_d_fake = torch.mean(pred_fake ** 2)
+            loss_d_real = torch.mean(pred_real - 1) ** 2
+            loss_d = 0.5 * loss_d_real + loss_d_fake
+        else :
+            print('Please input right tag')
+            # Discriminator直接反向传播优化，并更新optimizer和scheduler
+        loss_d.backward(retain_graph=True)    # retain_graph=True ， 如果不detach生成结果，那么这里保留计算图内存
+        self.opt_dis.step()
+        self.scheduler_dis.step()
+
+        return loss_d_fake,loss_d_real,loss_d
+
+    def G_loss(self,fake_b):
+
+        # 这里计算的G——loss需要与其余loss组合后反向传播
+        pred_fake = self.dis.forward(fake_b)
+        if self.loss_tag == 'origin':
+            self.criterion = nn.BCEWithLogitsLoss()
+            loss_g_gan = self.criterion(pred_fake, torch.ones_like(pred_fake))
+        elif self.loss_tag == 'WGAN-GP':
+            loss_g_gan =-pred_fake.mean()
+        elif self.loss_tag == 'LSGAN':
+            loss_g_gan = torch.abs(-torch.mean(pred_fake))
+
+        return loss_g_gan
+
+    def update_gen(self,out_gen):
+        self.gen = out_gen
+
+
+# Meaning Loss (Perceived distance)
+# 注意：感知距离需要预训练网络结构
+# Perceptual Loss
+# 注意：感知损失需要预训练网络结构
+class Perceptual_loss(nn.Module):
+
+    def __init__(self, lossFunction):
+        super().__init__()
+        self.lossFunction = lossFunction
+        self.Vgg19 = Vgg19().cuda()
+
+    def forward(self, output, target):
+        # Conv2d = nn.Conv2d(inputChannels, 3, 1, 1, 0,bias=False)
+        # Conv2d.load_state_dict(test.state_dict()) # 载入固定权重，可以人为指定
+        # o1,o2,o3 = Vgg19(Conv2d(output))
+        # t1,t2,t3 = Vgg19(Conv2d(target))
+
+        b, c, h, w = output.shape
+        output = output.reshape(b, c // 3, 3, h, w)
+        output = output.sum(dim=1)
+        target = target.reshape(b, c // 3, 3, h, w)
+        target = target.sum(dim=1)
+        o1, o2, o3 = self.Vgg19(output)
+        t1, t2, t3 = self.Vgg19(target)
+
+        return self.lossFunction(o1, t1) + self.lossFunction(o2, t2) + self.lossFunction(o3, t3)
+
+

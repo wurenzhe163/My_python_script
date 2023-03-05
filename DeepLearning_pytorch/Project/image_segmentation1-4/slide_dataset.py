@@ -73,6 +73,7 @@ class SlideDatasets(torch.utils.data.Dataset):
                   'train_label': self.onehottrain_label2,
                   #'train_dem':self.dem_img2
                   }
+                  
         for i, j in sample.items():
             sample[i] = j.type(torch.FloatTensor)
             

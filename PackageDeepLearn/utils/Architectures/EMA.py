@@ -1,5 +1,7 @@
 '''
 指数移动平均，参考https://zhuanlan.zhihu.com/p/68748778
+EMA也称滑动平均(exponential moving average)，
+或者叫做指数加权平均(exponentially weighted moving average)，可以用来估计变量的局部均值，使得变量的更新与一段时间内的历史取值有关。
 '''
 class EMA():
     def __init__(self, model, decay):
