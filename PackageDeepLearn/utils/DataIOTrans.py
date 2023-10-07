@@ -11,7 +11,7 @@ def make_dir(path):
     if not isExists:
         os.makedirs(path)
         print(path + ' 创建成功')
-        return True
+        return path
     return path
 
 class Denormalize(object):
@@ -98,7 +98,7 @@ class DataTrans(object):
             trans_totensor = transforms.ToTensor()
             train_transform.append(trans_totensor)
         if ColorJitter != None:
-            train_transform.append(torchvision.transforms.ColorJitter(
+            train_transform.append(transforms.ColorJitter(
                 ColorJitter[0], ColorJitter[1], ColorJitter[2], ColorJitter[3]))
         if Contrast != None:
             trans_Rcontrast = transforms.RandomAutocontrast(p=Contrast)
@@ -201,6 +201,24 @@ class DataTrans(object):
                 array_1[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
                 array_2[:, :, i] = (array_1[:, :, i] - mean[i]) / std[i]
         return array_2
+
+    @staticmethod
+    def MinMaxArray(array):
+        '''计算最大最小值'''
+
+        if len(array.shape) == 2:
+            array = array[...,None]
+
+        if len(array.shape) == 3:
+            h, w, c = array.shape
+            max = [];min=[]
+            for i in range(c):
+                max.append(np.max(array[:,:,i]))
+                min.append(np.min(array[:,:,i]))
+        else:
+            print('array.shape is wrong')
+
+        return max,min
 
     @staticmethod
     def copy_geoCoordSys(img_pos_path, img_none_path):
@@ -307,6 +325,9 @@ class DataIO(object):
         Returns: 0
 
         """
+        dirname = os.path.dirname(SavePath)
+        if os.path.isabs(dirname):
+            make_dir(dirname)
 
         # 判断数据类型
         if 'int8' in img_array.dtype.name:
