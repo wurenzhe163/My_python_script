@@ -51,7 +51,7 @@ def save_img(path,index=0,norm=False,endwith='.tif',
         if 'float' in str(image.dtype):
             image = image.astype(np.float32)
         if endwith == '.tif':
-            DataIO.save_Gdal(image, SavePath, img_transf=img_transf, coordnates=coordnates, img_proj=img_proj)
+            DataIO.save_Gdal(image, SavePath, transf=img_transf, img_transf=coordnates, img_proj=img_proj)
         else:
             cv2.imwrite(SavePath,image)
             # cv2能够保存整型多波段，或者float多波段
