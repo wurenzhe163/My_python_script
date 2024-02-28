@@ -38,7 +38,6 @@ def visualize(savepath=None,min_max=False,**images):
 def save_img(path,name,image,norm=False,histogram=False,
               img_transf=False, coordnates=None, img_proj=None):
 
-<<<<<<< HEAD
     make_dir('{}'.format(path))
     SavePath = os.path.join(path,name)
 
@@ -56,7 +55,7 @@ def save_img(path,name,image,norm=False,histogram=False,
             DataIO.save_Gdal(image, SavePath, img_transf = img_transf, coordnates = coordnates, img_proj = img_proj)
     else:
         cv2.imwrite(SavePath, image)  # cv2能够保存整型多波段，或者float多波段
-=======
+
     for idx, (name, image) in enumerate(images.items()):
         make_dir('{}/{}'.format(path,name))
         SavePath = '{}/{}/{}{}'.format(path,name,f'{index:05d}',endwith)
@@ -70,7 +69,6 @@ def save_img(path,name,image,norm=False,histogram=False,
         else:
             cv2.imwrite(SavePath,image)
             # cv2能够保存整型多波段，或者float多波段
->>>>>>> ac2d36ff153d6cc9d5f83740d2b29fe17e4b0a35
 
 
 def histogram_equalization_rgb(img):

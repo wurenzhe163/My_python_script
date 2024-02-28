@@ -180,7 +180,22 @@ class DataTrans(object):
         img_pos_proj = dataset.GetProjection()  # 地图投影信息
         def_geoCoordSys(img_none_path, img_pos_transf, img_pos_proj)
 
-<<<<<<< HEAD
+    @staticmethod
+    def rename_band(img_path,new_names:list,rewrite=False):
+        ds = gdal.Open(img_path)
+        band_count = ds.RasterCount
+        assert band_count == len(new_names) , 'BnadNames length not match'
+        for i in range(band_count):
+            ds.GetRasterBand(i+1).SetDescription(new_names[i])
+        driver = gdal.GetDriverByName('GTiff')
+        if rewrite:
+            dst_ds = driver.CreateCopy(img_path, ds)
+        else:
+            DirName = os.path.dirname(img_path)
+            BaseName = os.path.basename(img_path).split('.')[0]+'_Copy.'+os.path.basename(img_path).split('.')[1]
+            dst_ds = driver.CreateCopy(os.path.join(DirName,BaseName), ds)
+        dst_ds = None
+        ds = None
 try:
     import torch
     from torchvision import transforms
@@ -247,24 +262,7 @@ try:
     setattr(DataTrans, "data_augmentation", data_augmentation)
 except:
     print('torch or torchvision do not import')
-=======
-    @staticmethod
-    def rename_band(img_path,new_names:list,rewrite=False):
-        ds = gdal.Open(img_path)
-        band_count = ds.RasterCount
-        assert band_count == len(new_names) , 'BnadNames length not match'
-        for i in range(band_count):
-            ds.GetRasterBand(i+1).SetDescription(new_names[i])
-        driver = gdal.GetDriverByName('GTiff')
-        if rewrite:
-            dst_ds = driver.CreateCopy(img_path, ds)
-        else:
-            DirName = os.path.dirname(img_path)
-            BaseName = os.path.basename(img_path).split('.')[0]+'_Copy.'+os.path.basename(img_path).split('.')[1]
-            dst_ds = driver.CreateCopy(os.path.join(DirName,BaseName), ds)
-        dst_ds = None
-        ds = None
->>>>>>> ac2d36ff153d6cc9d5f83740d2b29fe17e4b0a35
+
 
 class DataIO(object):
     @staticmethod
