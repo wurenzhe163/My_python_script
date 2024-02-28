@@ -274,7 +274,7 @@ class DataIO(object):
         return [os.path.join(DATA_DIR, each) for each in path]
 
     @staticmethod
-    def read_IMG(path,flag=0,AutoDatatype=True):
+    def read_IMG(path,flag=0,datatype=None):
         """
         读为一个numpy数组,读取所有波段
         对于RGB图像仍然是RGB通道，cv2.imread读取的是BGR通道
@@ -292,14 +292,13 @@ class DataIO(object):
         if flag==1:
             img_transf = dataset.GetGeoTransform()  # 仿射矩阵
             img_proj = dataset.GetProjection()  # 地图投影信息
-        if not AutoDatatype:
+        if datatype is None:
             if Raster1.DataType == 1 :
                 datatype = np.uint8
             elif Raster1.DataType == 2:
                 datatype = np.uint16
             else:
                 datatype = float
-
         data = np.zeros([nYSize, nXSize, bands], dtype=datatype)
         for i in range(bands):
             band = dataset.GetRasterBand(i + 1)
@@ -310,7 +309,6 @@ class DataIO(object):
             return data,img_transf,img_proj
         else:
             print('None Output, please check')
-
 
 
     @staticmethod
