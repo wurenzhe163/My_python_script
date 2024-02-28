@@ -1,14 +1,4 @@
-"""
-Detail:
-Ref:
-Project:my_python_script
-Time:2022/3/8 14:10
-Author:WRZ
-"""
-'''
-这里不提前import函数，根据需求调用
-仅放一些网络初始化以及辅助算法
-'''
+
 def weights_init(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:

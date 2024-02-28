@@ -1,5 +1,6 @@
 import numpy as np
-import os
+import os,torch
+from torchvision import transforms
 from osgeo import gdal
 
 search_files = lambda path : sorted([os.path.join(path,f) for f in os.listdir(path)])
@@ -10,7 +11,7 @@ def make_dir(path):
     if not isExists:
         os.makedirs(path)
         print(path + ' 创建成功')
-        return path
+        return True
     return path
 
 class Denormalize(object):
@@ -66,123 +67,6 @@ class DataTrans(object):
         return : image --> (512,512)
         '''
         return np.argmax(OneHotImage,axis=-1)
-
-
-    @staticmethod
-    def StandardScaler(array, mean, std):
-        """
-        Z-Norm
-        Args:
-            array: 矩阵 ndarray
-            mean: 均值 list
-            std: 方差 list
-        Returns:标准化后的矩阵
-        """
-        if len(array.shape) == 2:
-            return (array - mean) / std
-
-        elif len(array.shape) == 3:
-            array_ = np.zeros_like(array).astype(np.float64)
-            h, w, c = array.shape
-            for i in range(c):
-                array_[:, :, i] = (array[:, :, i] - mean[i]) / std[i]
-        return array_
-
-    @staticmethod
-    def MinMaxScaler(array, max, min):
-        '''归一化'''
-        if len(array.shape) == 2:
-            return (array - min) / (max-min)
-
-        elif len(array.shape) == 3:
-            array_ = np.zeros_like(array).astype(np.float64)
-            h, w, c = array.shape
-            for i in range(c):
-                array_[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
-        return array_
-
-    @staticmethod
-    def MinMax_Standard(array, max:list, min:list,mean:list,std:list):
-        '''
-        先归一化，再标准化.
-        注意该标准化所用的mean和std均是归一化之后计算值
-        '''
-        if len(array.shape) == 2:
-            _ = (array - min) / (max - min)
-            return (_ - mean) / std
-
-        elif len(array.shape) == 3:
-            array_1 = np.zeros_like(array).astype(np.float64)
-            array_2 = np.zeros_like(array).astype(np.float64)
-            h, w, c = array.shape
-            for i in range(c):
-                array_1[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
-                array_2[:, :, i] = (array_1[:, :, i] - mean[i]) / std[i]
-        return array_2
-
-    @staticmethod
-    def MinMaxArray(array):
-        '''计算最大最小值'''
-
-        if len(array.shape) == 2:
-            array = array[...,None]
-
-        if len(array.shape) == 3:
-            h, w, c = array.shape
-            max = [];min=[]
-            for i in range(c):
-                max.append(np.max(array[:,:,i]))
-                min.append(np.min(array[:,:,i]))
-        else:
-            print('array.shape is wrong')
-
-        return max,min
-
-    @staticmethod
-    def copy_geoCoordSys(img_pos_path, img_none_path):
-        '''
-        获取img_pos坐标，并赋值给img_none
-        :param img_pos_path: 带有坐标的图像
-        :param img_none_path: 不带坐标的图像
-        '''
-
-        def def_geoCoordSys(read_path, img_transf, img_proj):
-            array_dataset = gdal.Open(read_path)
-            img_array = array_dataset.ReadAsArray(0, 0, array_dataset.RasterXSize, array_dataset.RasterYSize)
-            if 'int8' in img_array.dtype.name:
-                datatype = gdal.GDT_Byte
-            elif 'int16' in img_array.dtype.name:
-                datatype = gdal.GDT_UInt16
-            else:
-                datatype = gdal.GDT_Float32
-
-            if len(img_array.shape) == 3:
-                img_bands, im_height, im_width = img_array.shape
-            else:
-                img_bands, (im_height, im_width) = 1, img_array.shape
-
-            filename = read_path[:-4] + '_proj' + read_path[-4:]
-            driver = gdal.GetDriverByName("GTiff")  # 创建文件驱动
-            dataset = driver.Create(filename, im_width, im_height, img_bands, datatype)
-            dataset.SetGeoTransform(img_transf)  # 写入仿射变换参数
-            dataset.SetProjection(img_proj)  # 写入投影
-
-            # 写入影像数据
-            if img_bands == 1:
-                dataset.GetRasterBand(1).WriteArray(img_array)
-            else:
-                for i in range(img_bands):
-                    dataset.GetRasterBand(i + 1).WriteArray(img_array[i])
-            print(read_path, 'geoCoordSys get!')
-
-        dataset = gdal.Open(img_pos_path)  # 打开文件
-        img_pos_transf = dataset.GetGeoTransform()  # 仿射矩阵
-        img_pos_proj = dataset.GetProjection()  # 地图投影信息
-        def_geoCoordSys(img_none_path, img_pos_transf, img_pos_proj)
-
-try:
-    import torch
-    from torchvision import transforms
 
     @staticmethod
     def data_augmentation(ToTensor=False,ColorJitter:tuple=None,Resize=None,Contrast=None,Equalize=None,HFlip=None,Invert=None,VFlip=None,
@@ -242,10 +126,123 @@ try:
             trans_Rsize = transforms.Resize(Resize)  # Resize=(500,500)
             train_transform.append(trans_Rsize)
 
+        # class Detect_RandomHorizontalFlip(torch.nn.Module):
+        #     """随机水平翻转图像以及bboxes
+        #         用于目标检测
+        #     """
+        #
+        #     def __init__(self, p=0.5):
+        #         self.prob = p
+        #
+        #     def forward(self, image, target):
+        #         if torch.rand(1).item() < self.prob:
+        #             height, width = image.shape[-2:]
+        #             image = image.flip(-1)  # 水平翻转图片
+        #             bbox = target["boxes"]
+        #             # bbox: xmin, ymin, xmax, ymax
+        #             bbox[:, [0, 2]] = width - bbox[:, [2, 0]]  # 翻转对应bbox坐标信息
+        #             target["boxes"] = bbox
+        #         return image, target
+        #     def __repr__(self):
+        #         return self.__class__.__name__ + '(p={})'.format(self.prob)
+        # if dHFlip != 0 :
+        #     train_transform.append(Detect_RandomHorizontalFlip(p=dHFlip))
+
         return transforms.Compose(train_transform)
-    setattr(DataTrans, "data_augmentation", data_augmentation)
-except:
-    print('torch or torchvision do not import')
+
+    @staticmethod
+    def StandardScaler(array, mean, std):
+        """
+        Z-Norm
+        Args:
+            array: 矩阵 ndarray
+            mean: 均值 list
+            std: 方差 list
+        Returns:标准化后的矩阵
+        """
+        if len(array.shape) == 2:
+            return (array - mean) / std
+
+        elif len(array.shape) == 3:
+            array_ = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_[:, :, i] = (array[:, :, i] - mean[i]) / std[i]
+        return array_
+
+    @staticmethod
+    def MinMaxScaler(array, max, min):
+        '''归一化'''
+        if len(array.shape) == 2:
+            return (array - min) / (max-min)
+
+        elif len(array.shape) == 3:
+            array_ = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
+        return array_
+
+    @staticmethod
+    def MinMax_Standard(array, max:list, min:list,mean:list,std:list):
+        '''
+        先归一化，再标准化.
+        注意该标准化所用的mean和std均是归一化之后计算值
+        '''
+        if len(array.shape) == 2:
+            _ = (array - min) / (max - min)
+            return (_ - mean) / std
+
+        elif len(array.shape) == 3:
+            array_1 = np.zeros_like(array).astype(np.float64)
+            array_2 = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_1[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
+                array_2[:, :, i] = (array_1[:, :, i] - mean[i]) / std[i]
+        return array_2
+
+    @staticmethod
+    def copy_geoCoordSys(img_pos_path, img_none_path):
+        '''
+        获取img_pos坐标，并赋值给img_none
+        :param img_pos_path: 带有坐标的图像
+        :param img_none_path: 不带坐标的图像
+        '''
+
+        def def_geoCoordSys(read_path, img_transf, img_proj):
+            array_dataset = gdal.Open(read_path)
+            img_array = array_dataset.ReadAsArray(0, 0, array_dataset.RasterXSize, array_dataset.RasterYSize)
+            if 'int8' in img_array.dtype.name:
+                datatype = gdal.GDT_Byte
+            elif 'int16' in img_array.dtype.name:
+                datatype = gdal.GDT_UInt16
+            else:
+                datatype = gdal.GDT_Float32
+
+            if len(img_array.shape) == 3:
+                img_bands, im_height, im_width = img_array.shape
+            else:
+                img_bands, (im_height, im_width) = 1, img_array.shape
+
+            filename = read_path[:-4] + '_proj' + read_path[-4:]
+            driver = gdal.GetDriverByName("GTiff")  # 创建文件驱动
+            dataset = driver.Create(filename, im_width, im_height, img_bands, datatype)
+            dataset.SetGeoTransform(img_transf)  # 写入仿射变换参数
+            dataset.SetProjection(img_proj)  # 写入投影
+
+            # 写入影像数据
+            if img_bands == 1:
+                dataset.GetRasterBand(1).WriteArray(img_array)
+            else:
+                for i in range(img_bands):
+                    dataset.GetRasterBand(i + 1).WriteArray(img_array[i])
+            print(read_path, 'geoCoordSys get!')
+
+        dataset = gdal.Open(img_pos_path)  # 打开文件
+        img_pos_transf = dataset.GetGeoTransform()  # 仿射矩阵
+        img_pos_proj = dataset.GetProjection()  # 地图投影信息
+        def_geoCoordSys(img_none_path, img_pos_transf, img_pos_proj)
 
 class DataIO(object):
     @staticmethod
@@ -257,7 +254,7 @@ class DataIO(object):
         return [os.path.join(DATA_DIR, each) for each in path]
 
     @staticmethod
-    def read_IMG(path,flag=0,AutoDatatype=True):
+    def read_IMG(path,flag=0):
         """
         读为一个numpy数组,读取所有波段
         对于RGB图像仍然是RGB通道，cv2.imread读取的是BGR通道
@@ -275,13 +272,13 @@ class DataIO(object):
         if flag==1:
             img_transf = dataset.GetGeoTransform()  # 仿射矩阵
             img_proj = dataset.GetProjection()  # 地图投影信息
-        if not AutoDatatype:
-            if Raster1.DataType == 1 :
-                datatype = np.uint8
-            elif Raster1.DataType == 2:
-                datatype = np.uint16
-            else:
-                datatype = float
+
+        if Raster1.DataType == 1 :
+            datatype = np.uint8
+        elif Raster1.DataType == 2:
+            datatype = np.uint16
+        else:
+            datatype = float
 
         data = np.zeros([nYSize, nXSize, bands], dtype=datatype)
         for i in range(bands):
@@ -310,9 +307,6 @@ class DataIO(object):
         Returns: 0
 
         """
-        dirname = os.path.dirname(SavePath)
-        if os.path.isabs(dirname):
-            make_dir(dirname)
 
         # 判断数据类型
         if 'int8' in img_array.dtype.name:
@@ -343,3 +337,66 @@ class DataIO(object):
                 dataset.GetRasterBand(i + 1).WriteArray(img_array[:, :, i])
 
         dataset = None
+
+
+# 待调整 后续请参照https://github.com/wurenzhe163/segmentation_models.pytorch/blob/master/segmentation_models_pytorch/utils/train.py
+# https://github.com/qubvel/segmentation_models.pytorch/blob/master/examples/cars%20segmentation%20(camvid).ipynb
+class SegmentDataset(torch.utils.data.Dataset):
+    '''
+    该数据集建立方法服务于图像语义分割模型
+    input
+        :images_dir    输入图像路径
+        :masks_dir     输入标签路径
+        :Numclass=2    图像分类标签数
+        :augmentation=None   图像扩充方式DataTrans.data_augmentation
+    output
+        :return         PrefetchDataset(Image, Mask)
+    '''
+
+    def __init__(
+            self,
+            images_dir,
+            masks_dir,
+            Numclass=None,  # 分类数
+            augmentation=None,
+    ):
+        self.image_paths = search_files(images_dir)
+        self.mask_paths = search_files(masks_dir)
+        self.Numclass = Numclass
+        self.augmentation = augmentation
+
+
+    def __getitem__(self, i):
+        # read images and masks
+        image = DataIO.read_IMG(self.image_paths[i])
+        mask  = DataIO.read_IMG(self.mask_paths[i])
+        if i==1 :
+            print('img={},label={}'.format(image.shape,mask.shape))
+
+        # one-hot-encode the mask  # ， tgs的损失函数内部计算loss这里重复
+        mask1 = DataTrans.OneHotEncode(mask, self.Numclass)
+        # apply augmentations
+        if self.augmentation:
+            ImageMask = np.concatenate([image, mask1], axis=2)  # 图像与Lable一同变换
+            sample = self.augmentation(ImageMask)
+            image2, mask2 = sample[0:image.shape[2], :, :], sample[image.shape[2]:, :, :].type(torch.int64)
+            # 注意,经过augmentation,数据dtype=float64,需要转换数据类型才能够正常显示
+        self.image = image
+        self.image2 = image2
+        self.mask2 = mask2
+        return image2, mask2
+
+    def visu(self):
+        from PackageDeepLearn.utils import Visualize
+        Visualize.visualize(
+            Befor_Argu=self.image,
+            After_Argu=self.image2.permute(1, 2, 0).numpy().astype(np.uint8),
+            Label=DataTrans.OneHotDecode(self.mask2.permute(1, 2, 0).numpy().astype(np.uint8))
+        )
+
+    def __len__(self):
+        # return length of
+        return len(self.image_paths)
+
+
+
