@@ -1,4 +1,6 @@
 import torch,os
+from . import DataIOTrans
+import numpy as np
 import pandas as pd
 
 class Train_Log():
@@ -91,3 +93,18 @@ class Train_Log():
             log.to_csv(self.save_dir + logname,mode='a', index=False,header=0)
         else:
             log.to_csv(self.save_dir + logname, mode='w', index=False)
+
+def weigths_calculate(path ):
+    image0 = 0
+    image1 = 0
+    image2 = 0
+    image3 = 0
+    for i in path:
+        label = DataIOTrans.DataIO.read_IMG(i)[:, :, 0]  # 512*512
+        image0 += np.sum([label == 0]) # 514026281
+        image1 += np.sum([label == 1]) # 31193170
+        image2 += np.sum([label == 2]) # 70396515
+        image3 += np.sum([label == 3]) # 6976034
+    ALL = image0 + image1 + image2 + image3
+    # tensor([ 1.2112, 19.9592,  8.8441, 89.2473], dtype=torch.float64)
+    return torch.tensor([1/(image0/ALL),1/(image1/ALL),1/(image2/ALL),1/(image3/ALL)])

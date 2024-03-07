@@ -37,8 +37,6 @@ def paixu(str_in,key=lambda info: int(info.split('_')[-1].split('.')[0])):
     test = sorted(str_in,key=key)
     return test
 
-
-
 def search_files_alldir(path,endwith='.jpg',write=0):
     """
     遍历文件夹下所有文件（包括子文件夹），若只需当前文件夹下文件使用seach_files
@@ -73,7 +71,6 @@ def search_files_alldir(path,endwith='.jpg',write=0):
                     f.write('"'+s[each]+'"')
         print('writ is ok!')
     return s
-
 
 def filter_(img_array,label_array):
     """"

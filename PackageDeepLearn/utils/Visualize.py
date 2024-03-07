@@ -1,11 +1,8 @@
 import os.path
-
 import matplotlib.pyplot as plt
 import numpy as np
 from .DataIOTrans import DataIO,make_dir
-import cv2,torch
-from torch.utils.tensorboard import SummaryWriter
-import tensorboard
+import cv2
 '''
 可视化输出,包含打印字段
 '''
@@ -70,7 +67,6 @@ def save_img(path,name,image,norm=False,histogram=False,
             cv2.imwrite(SavePath,image)
             # cv2能够保存整型多波段，或者float多波段
 
-
 def histogram_equalization_rgb(img):
     """对输入的RGB图像进行直方图均衡化处理"""
     # 将图像转换为HSV颜色空间
@@ -83,20 +79,27 @@ def histogram_equalization_rgb(img):
     bgr = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
 
     return bgr
-def plot_network(model,logdir='./',comment='My_Network',shape=(8,3,512,512)):
-    """
-    针对于单输入的模型可视化
-    Args:
-        model: 模型
-        logdir: 保存文件夹
-        comment: 绘图标题
-        shape:  模型输入shape
-    """
-    x=torch.rand(shape)
-    with SummaryWriter(log_dir=logdir,comment=comment) as w:
-           w.add_graph(model, x)
 
-    #tensorboard --logdir=./logs
+try:
+    import torch
+    from torch.utils.tensorboard import SummaryWriter
+    import tensorboard
+    def plot_network(model,logdir='./',comment='My_Network',shape=(8,3,512,512)):
+        """
+        针对于单输入的模型可视化
+        Args:
+            model: 模型
+            logdir: 保存文件夹
+            comment: 绘图标题
+            shape:  模型输入shape
+        """
+        x=torch.rand(shape)
+        with SummaryWriter(log_dir=logdir,comment=comment) as w:
+               w.add_graph(model, x)
+
+        #tensorboard --logdir=./logs
+except:
+    print('Visualize can not import torch')
 
 
 
