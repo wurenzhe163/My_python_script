@@ -69,29 +69,6 @@ class DataTrans(object):
         return np.argmax(OneHotImage,axis=-1)
 
     @staticmethod
-    def StandardScaler(array, mean=None, std=None):
-        """
-        Z-Norm
-        Args:
-            array: 矩阵 ndarray
-            mean: 均值 list
-            std: 方差 list
-        Returns:标准化后的矩阵
-        """
-        if mean == None and std == None:
-            mean,std = calculate_mean_std(array)
-
-        if len(array.shape) == 2:
-            return (array - mean) / std
-
-        elif len(array.shape) == 3:
-            array_ = np.zeros_like(array).astype(np.float64)
-            h, w, c = array.shape
-            for i in range(c):
-                array_[:, :, i] = (array[:, :, i] - mean[i]) / std[i]
-        return array_
-
-    @staticmethod
     def calculate_mean_std(array):
         """
         计算多波段数组每个波段的均值和标准差。
@@ -120,26 +97,33 @@ class DataTrans(object):
             mean.append(band_mean)
             std.append(band_std)
         return mean, std
-
+    
     @staticmethod
-    def MinMaxScaler(array, max=None, min=None):
-        if max == None and min == None:
-            max,min = MinMaxArray(array)
-        '''归一化'''
+    def StandardScaler(array, mean=None, std=None):
+        """
+        Z-Norm
+        Args:
+            array: 矩阵 ndarray
+            mean: 均值 list
+            std: 方差 list
+        Returns:标准化后的矩阵
+        """
+        if mean == None and std == None:
+            mean,std = DataTrans.calculate_mean_std(array)
+
         if len(array.shape) == 2:
-            return (array - min) / (max-min)
+            return (array - mean) / std
 
         elif len(array.shape) == 3:
             array_ = np.zeros_like(array).astype(np.float64)
             h, w, c = array.shape
             for i in range(c):
-                array_[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
+                array_[:, :, i] = (array[:, :, i] - mean[i]) / std[i]
         return array_
-
+    
     @staticmethod
     def MinMaxArray(array):
         '''计算最大最小值'''
-
         if len(array.shape) == 2:
             array = array[...,None]
 
@@ -154,13 +138,31 @@ class DataTrans(object):
 
         return max,min
 
+    @staticmethod
+    def MinMaxScaler(array, max=None, min=None,scale = 1):
+        if max == None and min == None:
+            max,min = DataTrans.MinMaxArray(array)
+        '''归一化'''
+        if len(array.shape) == 2:
+            return (array - min) / (max-min)
+
+        elif len(array.shape) == 3:
+            array_ = np.zeros_like(array).astype(np.float64)
+            h, w, c = array.shape
+            for i in range(c):
+                array_[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i]) * scale
+        return array_
 
     @staticmethod
-    def MinMax_Standard(array, max:list, min:list,mean:list,std:list):
+    def MinMax_Standard(array, max:list=None, min:list=None,mean:list=None,std:list=None):
         '''
         先归一化，再标准化.
         注意该标准化所用的mean和std均是归一化之后计算值
         '''
+        if max == None and min == None and mean == None and std == None:
+            max,min = DataTrans.MinMaxArray(array)
+            mean,std = DataTrans.calculate_mean_std(array)
+            
         if len(array.shape) == 2:
             _ = (array - min) / (max - min)
             return (_ - mean) / std
@@ -317,7 +319,6 @@ class DataIO(object):
     def read_IMG(path,flag=0,datatype=None):
         """
         读为一个numpy数组,读取所有波段
-        对于RGB图像仍然是RGB通道，cv2.imread读取的是BGR通道
         path : img_path as:c:/xx/xx.tif
         flag:0不反回坐标，1返回坐标
         """
@@ -351,7 +352,7 @@ class DataIO(object):
             print('None Output, please check')
 
     @staticmethod
-    def save_Gdal(img_array, SavePath, transf=False, img_transf=None, img_proj=None):
+    def save_Gdal(img_array, SavePath, datatype=None, img_transf=None, img_proj=None):
         """
 
         Args:
@@ -385,7 +386,7 @@ class DataIO(object):
         driver = gdal.GetDriverByName("GTiff")  # 创建文件驱动
         dataset = driver.Create(SavePath, im_width, im_height, img_bands, datatype)
 
-        if transf:
+        if img_transf and img_proj:
             dataset.SetGeoTransform(img_transf)  # 写入仿射变换参数
             dataset.SetProjection(img_proj)  # 写入投影
 
@@ -397,3 +398,18 @@ class DataIO(object):
                 dataset.GetRasterBand(i + 1).WriteArray(img_array[:, :, i])
 
         dataset = None
+
+    @staticmethod
+    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,scale=1,datatype=None):
+        '''
+        path ： 输入图像路径
+        transFunc : 任意关于array的变换函数(DataTrans.StandardScaler , DataTrans.MinMaxScaler, DataTrans.MinMax_Standard)
+        datatype : gdal.GDT_Byte, gdal.GDT_UInt16, gdal.GDT_Float32. default = None以当前数据格式自动保存
+        '''
+        DirName = os.path.dirname(path)
+        BaseName = os.path.splitext(os.path.basename(path))
+        SavePath = os.path.join(DirName,BaseName[0] +'_Trans' +BaseName[1])
+        data,img_transf,img_proj = DataIO.read_IMG(path,flag=1)
+        
+        data = transFunc(data) * scale
+        DataIO.save_Gdal(data,SavePath,datatype=datatype,img_transf = img_transf,img_proj = img_proj)
