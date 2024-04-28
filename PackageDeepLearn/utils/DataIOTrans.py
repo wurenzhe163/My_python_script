@@ -370,12 +370,13 @@ class DataIO(object):
             make_dir(dirname)
 
         # 判断数据类型
-        if 'int8' in img_array.dtype.name:
-            datatype = gdal.GDT_Byte
-        elif 'int16' in img_array.dtype.name:
-            datatype = gdal.GDT_UInt16
-        else:
-            datatype = gdal.GDT_Float32
+        if datatype == None:
+            if 'int8' in img_array.dtype.name:
+                datatype = gdal.GDT_Byte
+            elif 'int16' in img_array.dtype.name:
+                datatype = gdal.GDT_UInt16
+            else:
+                datatype = gdal.GDT_Float32
 
         # 判断数据维度，仅接受shape=3或shape=2
         if len(img_array.shape) == 3:
@@ -400,7 +401,7 @@ class DataIO(object):
         dataset = None
 
     @staticmethod
-    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,scale=1,datatype=None):
+    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,scale=1,datatype=gdal.GDT_Byte):
         '''
         path ： 输入图像路径
         transFunc : 任意关于array的变换函数(DataTrans.StandardScaler , DataTrans.MinMaxScaler, DataTrans.MinMax_Standard)
