@@ -69,7 +69,7 @@ class DataTrans(object):
         return np.argmax(OneHotImage,axis=-1)
 
     @staticmethod
-    def StandardScaler(array, mean, std):
+    def StandardScaler(array, mean=None, std=None):
         """
         Z-Norm
         Args:
@@ -78,6 +78,9 @@ class DataTrans(object):
             std: 方差 list
         Returns:标准化后的矩阵
         """
+        if mean == None and std == None:
+            mean,std = calculate_mean_std(array)
+
         if len(array.shape) == 2:
             return (array - mean) / std
 
@@ -89,7 +92,39 @@ class DataTrans(object):
         return array_
 
     @staticmethod
-    def MinMaxScaler(array, max, min):
+    def calculate_mean_std(array):
+        """
+        计算多波段数组每个波段的均值和标准差。
+        Args:
+            array: 三维NumPy数组，形状为 (高, 宽, 波段数)
+        Returns:
+            mean: 每个波段的均值组成的列表
+            std: 每个波段的标准差组成的列表
+        """
+        # 检查输入数组是否为三维数组
+        if len(array.shape) != 3:
+            raise ValueError("输入数组必须是三维的。")
+        
+        # 获取数组的高、宽和波段数
+        h, w, c = array.shape
+        
+        # 初始化均值和标准差列表
+        mean = []
+        std = []
+        
+        # 遍历每个波段，计算均值和标准差
+        for i in range(c):
+            band = array[:, :, i]
+            band_mean = np.mean(band)
+            band_std = np.std(band)
+            mean.append(band_mean)
+            std.append(band_std)
+        return mean, std
+
+    @staticmethod
+    def MinMaxScaler(array, max=None, min=None):
+        if max == None and min == None:
+            max,min = MinMaxArray(array)
         '''归一化'''
         if len(array.shape) == 2:
             return (array - min) / (max-min)
@@ -100,6 +135,25 @@ class DataTrans(object):
             for i in range(c):
                 array_[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
         return array_
+
+    @staticmethod
+    def MinMaxArray(array):
+        '''计算最大最小值'''
+
+        if len(array.shape) == 2:
+            array = array[...,None]
+
+        if len(array.shape) == 3:
+            h, w, c = array.shape
+            max = [];min=[]
+            for i in range(c):
+                max.append(np.max(array[:,:,i]))
+                min.append(np.min(array[:,:,i]))
+        else:
+            print('array.shape is wrong')
+
+        return max,min
+
 
     @staticmethod
     def MinMax_Standard(array, max:list, min:list,mean:list,std:list):
@@ -119,24 +173,6 @@ class DataTrans(object):
                 array_1[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
                 array_2[:, :, i] = (array_1[:, :, i] - mean[i]) / std[i]
         return array_2
-
-    @staticmethod
-    def MinMaxArray(array):
-        '''计算最大最小值'''
-
-        if len(array.shape) == 2:
-            array = array[...,None]
-
-        if len(array.shape) == 3:
-            h, w, c = array.shape
-            max = [];min=[]
-            for i in range(c):
-                max.append(np.max(array[:,:,i]))
-                min.append(np.min(array[:,:,i]))
-        else:
-            print('array.shape is wrong')
-
-        return max,min
 
     @staticmethod
     def copy_geoCoordSys(img_pos_path, img_none_path):
