@@ -413,3 +413,4 @@ class DataIO(object):
         
         data = transFunc(data) * scale
         DataIO.save_Gdal(data,SavePath,datatype=datatype,img_transf = img_transf,img_proj = img_proj)
+        return SavePath
