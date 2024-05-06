@@ -401,17 +401,20 @@ class DataIO(object):
         dataset = None
 
     @staticmethod
-    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,scale=1,datatype=gdal.GDT_Byte):
+    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,bandSave:list=None,scale=1,datatype=gdal.GDT_Byte):
         '''
         path ： 输入图像路径
         transFunc : 任意关于array的变换函数(DataTrans.StandardScaler , DataTrans.MinMaxScaler, DataTrans.MinMax_Standard)
         datatype : gdal.GDT_Byte, gdal.GDT_UInt16, gdal.GDT_Float32. default = None以当前数据格式自动保存
+        bandSave : 需要保留的波段 如:[0,1,2]
         '''
         DirName = os.path.dirname(path)
         BaseName = os.path.splitext(os.path.basename(path))
         SavePath = os.path.join(DirName,BaseName[0] +'_Trans' +BaseName[1])
         data,img_transf,img_proj = DataIO.read_IMG(path,flag=1)
-        
-        data = transFunc(data) * scale
+        if transFunc:
+            data = transFunc(data) * scale
+        if bandSave:
+            data = data[:,:,bandSave]
         DataIO.save_Gdal(data,SavePath,datatype=datatype,img_transf = img_transf,img_proj = img_proj)
         return SavePath
