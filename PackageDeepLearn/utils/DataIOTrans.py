@@ -235,7 +235,30 @@ class DataTrans(object):
         dst_ds = None
         ds = None
 
+    @staticmethod
+    def tif2shp(tif_path, shp_path):
+        # 读取栅格与投影
+        inraster = gdal.Open(tif_path)
+        # 这个波段就是最后想要转为矢量的波段，如果是单波段数据的话那就都是1
+        inband = inraster.GetRasterBand(1)
+        prj = osr.SpatialReference()
+        prj.ImportFromWkt(inraster.GetProjection())
 
+        # 创建矢量文件
+        drv = ogr.GetDriverByName("ESRI Shapefile")
+        if os.path.exists(shp_path):
+            drv.DeleteDataSource(shp_path)
+        Polygon = drv.CreateDataSource(shp_path)  # 创建一个目标文件
+        # 对shp文件创建一个面矢量图层
+        # 给目标shp文件添加一个字段，用来存储原始栅格的pixel value,浮点型
+        Poly_layer = Polygon.CreateLayer('面矢量', srs=prj, geom_type=ogr.wkbMultiPolygon)
+        newField = ogr.FieldDefn('value', ogr.OFTReal)
+        Poly_layer.CreateField(newField)
+
+        # 核心函数，栅格转矢量，相似像元合并
+        gdal.Polygonize(inband, None, Poly_layer, 0)
+        Polygon.SyncToDisk()
+        Polygon = None
 
 
 try:
@@ -352,6 +375,21 @@ class DataIO(object):
             print('None Output, please check')
 
     @staticmethod
+    def get_nodata(path):
+        # 打开TIFF影像文件
+        in_dataset = gdal.Open(path)
+
+        # 检查是否成功打开
+        if in_dataset is None:
+            raise Exception('无法打开文件')
+
+        # 获取Nodata值
+        nodata_value = in_dataset.GetRasterBand(1).GetNoDataValue()
+
+        return nodata_value
+
+
+    @staticmethod
     def save_Gdal(img_array, SavePath, datatype=None, img_transf=None, img_proj=None):
         """
 
@@ -401,20 +439,117 @@ class DataIO(object):
         dataset = None
 
     @staticmethod
-    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,bandSave:list=None,scale=1,datatype=gdal.GDT_Byte):
+    def TransImage_Values(path,transFunc=DataTrans.MinMaxScaler,bandSave:list=None,scale=1,
+                          Nodata:list=None,datatype=gdal.GDT_Byte):
         '''
         path ： 输入图像路径
         transFunc : 任意关于array的变换函数(DataTrans.StandardScaler , DataTrans.MinMaxScaler, DataTrans.MinMax_Standard)
         datatype : gdal.GDT_Byte, gdal.GDT_UInt16, gdal.GDT_Float32. default = None以当前数据格式自动保存
         bandSave : 需要保留的波段 如:[0,1,2]
+        Nodata   : Nodata转换，[0,255]图像中数值为0的像素转为255
         '''
         DirName = os.path.dirname(path)
         BaseName = os.path.splitext(os.path.basename(path))
         SavePath = os.path.join(DirName,BaseName[0] +'_Trans' +BaseName[1])
         data,img_transf,img_proj = DataIO.read_IMG(path,flag=1)
+        if Nodata:
+            data[data == Nodata[0]] = Nodata[1]
         if transFunc:
             data = transFunc(data) * scale
         if bandSave:
             data = data[:,:,bandSave]
         DataIO.save_Gdal(data,SavePath,datatype=datatype,img_transf = img_transf,img_proj = img_proj)
         return SavePath
+
+
+class DataCrop(object):
+    @staticmethod
+    def get_extent(dataset):
+        """获取栅格数据集的地理范围"""
+        gt = dataset.GetGeoTransform()
+        cols = dataset.RasterXSize
+        rows = dataset.RasterYSize
+        minx = gt[0]
+        maxx = gt[0] + (gt[1] * cols)
+        miny = gt[3] + (gt[5] * rows)
+        maxy = gt[3]
+        return minx, maxx, miny, maxy
+
+    @staticmethod
+    def calculate_intersection(extents:list):
+        """
+        计算一系列范围的交集
+        extents : [get_extent(ds) for ds in datasets]
+        """
+        minx = max(extent[0] for extent in extents)
+        maxx = min(extent[1] for extent in extents)
+        miny = max(extent[2] for extent in extents)
+        maxy = min(extent[3] for extent in extents)
+        return minx, maxx, miny, maxy
+
+    @staticmethod
+    def check_projection_consistency(datasets:list):
+        """
+        检查所有数据集的投影是否一致
+        datasets : [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
+        """
+        projections = [ds.GetProjection() for ds in datasets]
+        if not all(proj == projections[0] for proj in projections):
+            return False
+        return True
+
+    @staticmethod
+    def reproject_datasets(datasets, target_projection, x_res=None, y_res=None):
+        """
+        重投影数据集集合，可以指定输出分辨率
+        datasets : [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
+        target_projection: gdalProjection 如：gdal.Open('tif_path', gdal.GA_ReadOnly).GetProjection()
+        x_res : 行分辨率，不指定则保持
+        y_res : 列分辨率，不指定则保持
+        """
+        reprojected_datasets = []
+        for ds in datasets:
+            warp_options = {
+                'dstSRS': target_projection,
+                'format': 'MEM'
+            }
+            if x_res and y_res:
+                warp_options.update({
+                    'xRes': x_res,
+                    'yRes': y_res
+                })
+            reprojected_ds = gdal.Warp('', ds, **warp_options)
+            reprojected_datasets.append(reprojected_ds)
+        return reprojected_datasets
+
+    @staticmethod
+    def crop_datasets(datasets, file_names, minx, miny, maxx, maxy):
+        """裁剪数据集集合，使用原始文件名列表来命名输出文件"""
+        for ds, name in zip(datasets, file_names):
+            output_file = f'cropped_{name}'
+            gdal.Warp(output_file, ds, outputBounds=[minx, miny, maxx, maxy], cropToCutline=True)
+            ds = None  # 关闭文件
+    
+    # os.chdir(r'D:\BaiduSyncdisk\02_论文相关\在写\几何畸变\数据\小范围对比\SAM提取结果\test')
+    # # 获取所有TIF文件的路径
+    # tif_files = [file for file in os.listdir('.') if file.endswith('.tif')]
+
+    # # 打开所有栅格数据集
+    # datasets = [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
+
+    # # 检查投影一致性
+    # if check_projection_consistency(datasets):
+    #     # 如果投影一致，直接获取交集范围并裁剪
+    #     extents = [get_extent(ds) for ds in datasets]
+    #     minx, maxx, miny, maxy = calculate_intersection(extents)
+    #     crop_datasets(datasets, tif_files, minx, miny, maxx, maxy)
+    # else:
+    #     # 如果投影不一致，重投影到目标投影，然后裁剪
+    #     target_projection = gdal.Open(tif_files[0], gdal.GA_ReadOnly).GetProjection()  # 假设以第一个文件为目标投影
+    #     x_res, y_res = 10, 10  # 示例分辨率，可以根据需要调整
+    #     reprojected_datasets = reproject_datasets(datasets, target_projection, x_res, y_res)
+    #     extents = [get_extent(ds) for ds in reprojected_datasets]
+    #     minx, maxx, miny, maxy = calculate_intersection(extents)
+    #     crop_datasets(reprojected_datasets, tif_files, minx, miny, maxx, maxy)
+
+    # print(f"Processed all images. Intersection extent: {minx}, {maxx}, {miny}, {maxy}")

@@ -81,7 +81,7 @@ def caculate_σ_μ_(ImgPaths, ignoreValue=65535):
 def Cal_HistBoundary(counts, y=100):
     '''
     counts：分布直方图计数
-    y=300是百分比截断数
+    y      : 百分比截断数,前后截取
     '''
     Boundaryvalue = int(sum(counts) / y)
     countFront = 0
