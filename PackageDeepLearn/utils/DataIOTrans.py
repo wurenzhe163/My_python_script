@@ -177,6 +177,40 @@ class DataTrans(object):
         return array_2
 
     @staticmethod
+    def MinMaxBoundary(array, bins=256, y=50):
+        """
+        array: 2d或3d矩阵
+        bins : 直方图的bin数
+        y    : 百分比截断数,前后截取
+        """
+        if len(array.shape) == 2:
+            array = array.flatten()
+            counts, bin_edges = np.histogram(array, bins=bins)
+            boundary = Statistical_Methods.Cal_HistBoundary(counts, bin_edges, y=y)
+            min_value = boundary['min_value']
+            max_value = boundary['max_value']
+            return max_value, min_value
+        elif len(array.shape) == 3:
+            min_values = []
+            max_values = []
+            for channel in range(array.shape[2]):
+                channel_counts, channel_bin_edges = np.histogram(array[:, :, channel], bins=bins)
+                channel_boundary = Statistical_Methods.Cal_HistBoundary(channel_counts, channel_bin_edges, y=y)
+                min_values.append(channel_boundary['min_value'])
+                max_values.append(channel_boundary['max_value'])
+            return max_values, min_values
+        else:
+            raise ValueError("Array must be either 2D or 3D.")
+        
+    @staticmethod
+    def MinMaxBoundaryScaler(array, bins=256, y=50, scale=1):
+        '''
+        scale : 归一化之后的放缩比例
+        '''
+        max,min = DataTrans.MinMaxBoundary(array, bins=bins, y=y)
+        return DataTrans.MinMaxScaler(array, max=max, min=min, scale=scale)
+
+    @staticmethod
     def copy_geoCoordSys(img_pos_path, img_none_path):
         '''
         获取img_pos坐标，并赋值给img_none
