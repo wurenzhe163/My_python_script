@@ -38,8 +38,8 @@ def caculate_σ_μ_(ImgPaths, ignoreValue=65535):
     ImgPaths: list, 包含所有需要计算的影像路径
     ignoreValue： 忽略的值
     '''
-    σ_ALL = [];
-    μ_ALL = [];
+    σ_ALL = []
+    μ_ALL = []
 
     pbar = tqdm(ImgPaths)
     for i, each in enumerate(pbar):
@@ -78,14 +78,16 @@ def caculate_σ_μ_(ImgPaths, ignoreValue=65535):
     μ = np.mean(np.array(μ_ALL), axis=0)
     return σ, μ
 
-def Cal_HistBoundary(counts, y=100):
+def Cal_HistBoundary(counts, bin_edges, y=100):
     '''
-    counts：分布直方图计数
+    counts ：分布直方图计数
+    bin_edges: 分布直方图的边界值
     y      : 百分比截断数,前后截取
     '''
     Boundaryvalue = int(sum(counts) / y)
     countFront = 0
     countBack = 0
+    indexFront = indexBack = None
 
     for index, count in enumerate(counts):
         if countFront + count >= Boundaryvalue:
@@ -101,8 +103,17 @@ def Cal_HistBoundary(counts, y=100):
         else:
             countBack += count
 
-    return {'countFront': countFront, 'indexFront': indexFront,
-            'countBack': countBack, 'indexBack': indexBack}
+    min_value = bin_edges[indexFront]
+    max_value = bin_edges[indexBack + 1]
+
+    return {
+        'countFront': countFront, 
+        'indexFront': indexFront,
+        'countBack': countBack, 
+        'indexBack': indexBack,
+        'min_value': min_value,
+        'max_value': max_value
+    }
 
 def Cal_median(df, ColumnName):
     median_count = df[ColumnName].sum() / 2
