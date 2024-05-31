@@ -2,6 +2,7 @@ import numpy as np
 import os
 from osgeo import gdal
 from tqdm import tqdm
+from PackageDeepLearn.utils import Statistical_Methods
 
 search_files = lambda path : sorted([os.path.join(path,f) for f in os.listdir(path)])
 
