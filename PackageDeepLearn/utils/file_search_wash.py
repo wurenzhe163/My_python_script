@@ -37,40 +37,44 @@ def paixu(str_in,key=lambda info: int(info.split('_')[-1].split('.')[0])):
     test = sorted(str_in,key=key)
     return test
 
-def search_files_alldir(path,endwith='.jpg',write=0):
+def search_files_alldir(path, endwith='.tif', return_type='relative'):
     """
-    遍历文件夹下所有文件（包括子文件夹），若只需当前文件夹下文件使用seach_files
-    write = 0   返回矩阵
-    write = 1   返回endwith[0:2].txt
-    write = 2   返回endwith[0:2].txt，每行数据加引号
+    遍历文件夹下所有文件（包括子文件夹），若只需当前文件夹下文件使用search_files
+
+    参数:
+    - path: 要搜索的文件夹路径
+    - endwith: 文件后缀名（默认是'.tif'）
+    - return_type: 返回值类型，'absolute'表示返回绝对路径，'relative'表示返回文件夹名与文件名
+
+    返回:
+    - 包含所有符合条件的文件的列表，根据 return_type 参数返回绝对路径或有序字典形式的文件夹名与文件名
     """
-    all_files = os.walk(path)#os.walk遍历所有文件，见P89
-    s = []
-    for i in all_files:
-        for each_file in i[2]:
+    all_files = os.walk(path)  # os.walk遍历所有文件
+    if return_type == 'absolute':
+        s = []
+    elif return_type == 'relative':
+        s = OrderedDict()
+
+    for dirpath, dirnames, filenames in all_files:
+        for each_file in filenames:
             if each_file.endswith(endwith):
-                s.append(os.path.join(i[0],each_file))
-    print('文件数=%d'%len(s))
+                if return_type == 'absolute':
+                    s.append(os.path.join(dirpath, each_file))
+                elif return_type == 'relative':
+                    if dirpath not in s:
+                        s[dirpath] = []
+                    s[dirpath].append(each_file)
 
-    if write == 1 :
-        with open(endwith[0:2]+'.txt','w') as f:
-            for each in range(len(s)):
-                if each+1<len(s):
-                    f.write(s[each]+',')
-                else:
-                    f.write(s[each])
-        print('writ is ok!')
-
-
-    if write == 2 :
-        with open(endwith[0:2]+'.txt','w') as f:
-            for each in range(len(s)):
-                if each+1<len(s):
-                    f.write('"'+s[each]+'",')
-                else:
-                    f.write('"'+s[each]+'"')
-        print('writ is ok!')
+    if return_type == 'absolute':
+        print('文件数=%d' % len(s))
+    elif return_type == 'relative':
+        file_count = sum(len(files) for files in s.values())
+        print('文件数=%d' % file_count)
+        for folder, files in s.items():
+            print(f"{folder}: {len(files)} files")
+        
     return s
+
 
 def filter_(img_array,label_array):
     """"
