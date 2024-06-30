@@ -142,9 +142,10 @@ class DataTrans(object):
 
     @staticmethod
     def MinMaxScaler(array, max=None, min=None,scale = 1):
+        '''归一化'''
         if max == None and min == None:
             max,min = DataTrans.MinMaxArray(array)
-        '''归一化'''
+
         if len(array.shape) == 2:
             return (array - min) / (max-min)
 
@@ -177,7 +178,7 @@ class DataTrans(object):
                 array_1[:, :, i] = (array[:, :, i] - min[i]) / (max[i]-min[i])
                 array_2[:, :, i] = (array_1[:, :, i] - mean[i]) / std[i]
         return array_2
-
+    
     @staticmethod
     def MinMaxBoundary(array, bins=256, y=50):
         """
@@ -205,7 +206,7 @@ class DataTrans(object):
             raise ValueError("Array must be either 2D or 3D.")
         
     @staticmethod
-    def MinMaxBoundaryScaler(array, bins=256, y=50, scale=1):
+    def MinMaxBoundaryScaler(array, bins=256, y=100, scale=1):
         '''
         scale : 归一化之后的放缩比例
         '''
@@ -255,21 +256,46 @@ class DataTrans(object):
         def_geoCoordSys(img_none_path, img_pos_transf, img_pos_proj)
 
     @staticmethod
-    def rename_band(img_path,new_names:list,rewrite=False):
-        ds = gdal.Open(img_path)
+    def rename_band(img_path, new_names: list, rewrite=False):
+        if not os.path.exists(img_path):
+            raise FileNotFoundError(f"File {img_path} not found.")
+        
+        if not os.access(img_path, os.W_OK):
+            raise PermissionError(f"No write permission for file {img_path}.")
+
+        ds = gdal.Open(img_path, gdal.GA_Update)
+        if ds is None:
+            raise FileNotFoundError(f"Unable to open file {img_path}.")
+
         band_count = ds.RasterCount
-        assert band_count == len(new_names) , 'BnadNames length not match'
-        for i in range(band_count):
-            ds.GetRasterBand(i+1).SetDescription(new_names[i])
-        driver = gdal.GetDriverByName('GTiff')
-        if rewrite:
-            dst_ds = driver.CreateCopy(img_path, ds)
-        else:
-            DirName = os.path.dirname(img_path)
-            BaseName = os.path.basename(img_path).split('.')[0]+'_Copy.'+os.path.basename(img_path).split('.')[1]
-            dst_ds = driver.CreateCopy(os.path.join(DirName,BaseName), ds)
-        dst_ds = None
-        ds = None
+        if band_count != len(new_names):
+            raise ValueError('BandNames length does not match the number of bands.')
+
+        try:
+            for i in range(band_count):
+                ds.GetRasterBand(i + 1).SetDescription(new_names[i])
+            ds.FlushCache()  # Ensure all changes are written
+
+            driver = gdal.GetDriverByName('GTiff')
+            if rewrite:
+                temp_file = img_path + '.tmp'
+                dst_ds = driver.CreateCopy(temp_file, ds)
+                dst_ds.FlushCache()
+                dst_ds = None
+                ds = None
+
+                # Replace the original file with the temporary file
+                os.replace(temp_file, img_path)
+            else:
+                DirName = os.path.dirname(img_path)
+                BaseName = os.path.basename(img_path).split('.')[0] + '_Copy.' + os.path.basename(img_path).split('.')[1]
+                dst_ds = driver.CreateCopy(os.path.join(DirName, BaseName), ds)
+                dst_ds.FlushCache()
+                dst_ds = None
+        except Exception as e:
+            raise RuntimeError(f"An error occurred while renaming bands: {e}")
+        finally:
+            ds = None  # Ensure dataset is closed
 
     @staticmethod
     def raster_to_vector(raster_paths, vector_path, retain_values=None, merge_features=False, append=False):
@@ -472,7 +498,7 @@ class DataIO(object):
 
         # 获取Nodata值
         nodata_value = in_dataset.GetRasterBand(1).GetNoDataValue()
-
+        in_dataset = None
         return nodata_value
 
 
