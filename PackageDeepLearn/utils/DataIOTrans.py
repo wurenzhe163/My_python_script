@@ -2,6 +2,7 @@ import numpy as np
 import os
 from osgeo import gdal
 from tqdm import tqdm
+from osgeo import gdal, ogr
 from PackageDeepLearn.utils import Statistical_Methods
 
 search_files = lambda path : sorted([os.path.join(path,f) for f in os.listdir(path)])
@@ -271,29 +272,80 @@ class DataTrans(object):
         ds = None
 
     @staticmethod
-    def tif2shp(tif_path, shp_path):
-        # 读取栅格与投影
-        inraster = gdal.Open(tif_path)
-        # 这个波段就是最后想要转为矢量的波段，如果是单波段数据的话那就都是1
-        inband = inraster.GetRasterBand(1)
-        prj = osr.SpatialReference()
-        prj.ImportFromWkt(inraster.GetProjection())
-
-        # 创建矢量文件
+    def raster_to_vector(raster_paths, vector_path, retain_values=None, merge_features=False, append=False):
+        """
+        将栅格数据转换为矢量数据
+        raster_paths: 栅格文件路径列表
+        vector_path: 输出矢量文件路径
+        retain_values: 要保留的DN值列表，默认None表示所有值
+        merge_features: 是否将同一个DN值的所有要素合并为一个整体
+        append: 是否追加到现有矢量文件
+        """
         drv = ogr.GetDriverByName("ESRI Shapefile")
-        if os.path.exists(shp_path):
-            drv.DeleteDataSource(shp_path)
-        Polygon = drv.CreateDataSource(shp_path)  # 创建一个目标文件
-        # 对shp文件创建一个面矢量图层
-        # 给目标shp文件添加一个字段，用来存储原始栅格的pixel value,浮点型
-        Poly_layer = Polygon.CreateLayer('面矢量', srs=prj, geom_type=ogr.wkbMultiPolygon)
-        newField = ogr.FieldDefn('value', ogr.OFTReal)
-        Poly_layer.CreateField(newField)
+        
+        if append and os.path.exists(vector_path):
+            # 以追加模式打开现有矢量文件
+            dst_ds = drv.Open(vector_path, 1)
+            if dst_ds is None:
+                raise Exception(f"Failed to open existing file {vector_path} in append mode.")
+            dst_layer = dst_ds.GetLayer()
+        else:
+            # 创建新的矢量文件
+            dst_ds = drv.CreateDataSource(vector_path)
+            dst_layer = dst_ds.CreateLayer("polygonized", srs=None)
+            # 添加字段
+            fd = ogr.FieldDefn("DN", ogr.OFTInteger)
+            dst_layer.CreateField(fd)
 
-        # 核心函数，栅格转矢量，相似像元合并
-        gdal.Polygonize(inband, None, Poly_layer, 0)
-        Polygon.SyncToDisk()
-        Polygon = None
+        for raster_path in tqdm(raster_paths):
+            # 打开栅格文件
+            src_ds = gdal.Open(raster_path)
+            srcband = src_ds.GetRasterBand(1)
+
+            # 创建临时矢量文件
+            temp_ds = drv.CreateDataSource('/vsimem/temp.shp')
+            temp_layer = temp_ds.CreateLayer("polygonized", srs=None)
+
+            # 添加字段
+            temp_layer.CreateField(fd)
+
+            # 栅格转矢量
+            gdal.Polygonize(srcband, None, temp_layer, 0, [], callback=None)
+
+            if merge_features:
+                # 将同一个DN值的所有要素合并为一个整体
+                unique_values = set()
+                for feature in temp_layer:
+                    unique_values.add(feature.GetField("DN"))
+                
+                for value in unique_values:
+                    if retain_values is None or value in retain_values:
+                        temp_layer.SetAttributeFilter(f"DN = {value}")
+                        union_geom = None
+                        for feature in temp_layer:
+                            if union_geom is None:
+                                union_geom = feature.GetGeometryRef().Clone()
+                            else:
+                                union_geom = union_geom.Union(feature.GetGeometryRef())
+                        if union_geom is not None:
+                            new_feature = ogr.Feature(dst_layer.GetLayerDefn())
+                            new_feature.SetGeometry(union_geom)
+                            new_feature.SetField("DN", value)
+                            dst_layer.CreateFeature(new_feature)
+                        temp_layer.SetAttributeFilter(None)
+            else:
+                # 将临时矢量文件的要素添加到目标矢量文件中
+                for feature in temp_layer:
+                    dn_value = feature.GetField("DN")
+                    if retain_values is None or dn_value in retain_values:
+                        dst_layer.CreateFeature(feature)
+
+            # 清理临时矢量文件
+            temp_ds = None
+            src_ds = None
+
+        # 清理
+        dst_ds = None
 
 
 try:
