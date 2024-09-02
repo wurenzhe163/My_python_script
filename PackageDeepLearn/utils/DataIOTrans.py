@@ -298,7 +298,7 @@ class DataTrans(object):
             ds = None  # Ensure dataset is closed
 
     @staticmethod
-    def raster_to_vector(raster_paths, vector_path, retain_values=None, merge_features=False, append=False):
+    def raster_to_vector(raster_paths, vector_path, retain_values=None, attributes=None, merge_features=False, append=False):
         """
         将栅格数据转换为矢量数据
         raster_paths: 栅格文件路径列表
@@ -306,6 +306,7 @@ class DataTrans(object):
         retain_values: 要保留的DN值列表，默认None表示所有值
         merge_features: 是否将同一个DN值的所有要素合并为一个整体
         append: 是否追加到现有矢量文件
+        attributes: 可选的属性字典，键为属性字段名，值为属性值列表
         """
         drv = ogr.GetDriverByName("ESRI Shapefile")
         
@@ -318,21 +319,48 @@ class DataTrans(object):
         else:
             # 创建新的矢量文件
             dst_ds = drv.CreateDataSource(vector_path)
+            if dst_ds is None:
+                raise Exception(f"Failed to create vector file {vector_path}.")
+            
             dst_layer = dst_ds.CreateLayer("polygonized", srs=None)
+            if dst_layer is None:
+                raise Exception(f"Failed to create layer in vector file {vector_path}.")
+            
             # 添加字段
             fd = ogr.FieldDefn("DN", ogr.OFTInteger)
             dst_layer.CreateField(fd)
 
-        for raster_path in tqdm(raster_paths):
+            # 添加属性字段
+            if attributes:
+                for attr_name in attributes.keys():
+                    fd = ogr.FieldDefn(attr_name, ogr.OFTString)  # 假设所有属性值都是字符串类型
+                    dst_layer.CreateField(fd)
+
+        for idx, raster_path in tqdm(enumerate(raster_paths)):
             # 打开栅格文件
             src_ds = gdal.Open(raster_path)
+            if src_ds is None:
+                print(f"Failed to open raster file {raster_path}. Skipping.")
+                continue
+
             srcband = src_ds.GetRasterBand(1)
 
             # 创建临时矢量文件
             temp_ds = drv.CreateDataSource('/vsimem/temp.shp')
+            if temp_ds is None:
+                print("Failed to create temporary vector file. Skipping.")
+                src_ds = None
+                continue
+
             temp_layer = temp_ds.CreateLayer("polygonized", srs=None)
+            if temp_layer is None:
+                print("Failed to create layer in temporary vector file. Skipping.")
+                temp_ds = None
+                src_ds = None
+                continue
 
             # 添加字段
+            fd = ogr.FieldDefn("DN", ogr.OFTInteger)
             temp_layer.CreateField(fd)
 
             # 栅格转矢量
@@ -357,6 +385,9 @@ class DataTrans(object):
                             new_feature = ogr.Feature(dst_layer.GetLayerDefn())
                             new_feature.SetGeometry(union_geom)
                             new_feature.SetField("DN", value)
+                            if attributes:
+                                for attr_name, attr_values in attributes.items():
+                                    new_feature.SetField(attr_name, attr_values[idx])
                             dst_layer.CreateFeature(new_feature)
                         temp_layer.SetAttributeFilter(None)
             else:
@@ -364,7 +395,13 @@ class DataTrans(object):
                 for feature in temp_layer:
                     dn_value = feature.GetField("DN")
                     if retain_values is None or dn_value in retain_values:
-                        dst_layer.CreateFeature(feature)
+                        new_feature = ogr.Feature(dst_layer.GetLayerDefn())
+                        new_feature.SetGeometry(feature.GetGeometryRef())
+                        new_feature.SetField("DN", dn_value)
+                        if attributes:
+                            for attr_name, attr_values in attributes.items():
+                                new_feature.SetField(attr_name, attr_values[idx])
+                        dst_layer.CreateFeature(new_feature)
 
             # 清理临时矢量文件
             temp_ds = None
@@ -372,8 +409,7 @@ class DataTrans(object):
 
         # 清理
         dst_ds = None
-
-
+        
 try:
     import torch
     from torchvision import transforms
