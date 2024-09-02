@@ -530,10 +530,11 @@ class DataIO(object):
                 datatype = gdal.GDT_Float32
 
         # 判断数据维度，仅接受shape=3或shape=2
-        if len(img_array.shape) == 3:
-            im_height, im_width, img_bands = img_array.shape
-        else:
-            img_bands, (im_height, im_width) = 1, img_array.shape
+        if len(img_array.shape) == 2:  # 如果是二维数组
+            im_height, im_width = img_array.shape
+            img_bands = 1  # 默认为单通道
+        elif len(img_array.shape) == 3:  # 如果是三维数组
+            img_bands, im_height, im_width = img_array.shape
 
         driver = gdal.GetDriverByName("GTiff")  # 创建文件驱动
         dataset = driver.Create(SavePath, im_width, im_height, img_bands, datatype)
