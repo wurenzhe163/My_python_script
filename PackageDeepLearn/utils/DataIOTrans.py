@@ -625,6 +625,12 @@ class DataCrop(object):
         return minx, maxx, miny, maxy
 
     @staticmethod
+    def get_nodata_value(dataset):
+        """获取栅格数据集的 NoData 值"""
+        band = dataset.GetRasterBand(1)  # 假设我们关心第一个波段
+        return band.GetNoDataValue()
+
+    @staticmethod
     def calculate_intersection(extents:list):
         """
         计算一系列范围的交集
@@ -634,6 +640,18 @@ class DataCrop(object):
         maxx = min(extent[1] for extent in extents)
         miny = max(extent[2] for extent in extents)
         maxy = min(extent[3] for extent in extents)
+        return minx, maxx, miny, maxy
+        
+    @staticmethod
+    def calculate_union(extents):
+        """
+        计算一系列范围的并集
+        extents : [get_extent(ds) for ds in datasets]
+        """
+        minx = min(extent[0] for extent in extents)
+        maxx = max(extent[1] for extent in extents)
+        miny = min(extent[2] for extent in extents)
+        maxy = max(extent[3] for extent in extents)
         return minx, maxx, miny, maxy
 
     @staticmethod
@@ -679,6 +697,15 @@ class DataCrop(object):
             gdal.Warp(output_file, ds, outputBounds=[minx, miny, maxx, maxy], cropToCutline=True)
             ds = None  # 关闭文件
     
+    @staticmethod
+    def expend_datasets(datasets, file_names, minx, miny, maxx, maxy, nodata_value=None):
+        """裁剪数据集集合，使用原始文件名列表来命名输出文件"""
+        for ds, name in zip(datasets, file_names):
+            if nodata_value==None:
+                nodata_value = DataCrop.get_nodata_value(ds)
+            output_file = f'cropped_{name}'
+            gdal.Warp(output_file, ds, outputBounds=[minx, miny, maxx, maxy], dstNodata=nodata_value)
+            ds = None  # 关闭文件
 # import os
 # from osgeo import gdal
 # from PackageDeepLearn.utils.DataIOTrans import DataIO,DataCrop
