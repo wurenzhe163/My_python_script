@@ -332,8 +332,17 @@ class DataTrans(object):
 
             # 添加属性字段
             if attributes:
-                for attr_name in attributes.keys():
-                    fd = ogr.FieldDefn(attr_name, ogr.OFTString)  # 假设所有属性值都是字符串类型
+                for attr_name, attr_value in attributes.items():
+                    # 根据属性值的类型定义字段类型
+                    if isinstance(attr_value, int):
+                        fd = ogr.FieldDefn(attr_name, ogr.OFTInteger)
+                    elif isinstance(attr_value, float):
+                        fd = ogr.FieldDefn(attr_name, ogr.OFTReal)
+                    else:
+                        # 假设其他类型都为字符串类型
+                        fd = ogr.FieldDefn(attr_name, ogr.OFTString)
+                    
+                    # 创建字段
                     dst_layer.CreateField(fd)
 
         for idx, raster_path in tqdm(enumerate(raster_paths)):
