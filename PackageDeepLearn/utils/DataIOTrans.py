@@ -2,7 +2,7 @@ import numpy as np
 import os
 from osgeo import gdal
 from tqdm import tqdm
-from osgeo import gdal, ogr
+from osgeo import gdal, ogr, osr
 from PackageDeepLearn.utils import Statistical_Methods
 
 search_files = lambda path : sorted([os.path.join(path,f) for f in os.listdir(path)])
@@ -322,7 +322,11 @@ class DataTrans(object):
             if dst_ds is None:
                 raise Exception(f"Failed to create vector file {vector_path}.")
             
-            dst_layer = dst_ds.CreateLayer("polygonized", srs=None)
+            # 设置空间参考系统为WGS84
+            srs_wgs84 = osr.SpatialReference()
+            srs_wgs84.ImportFromEPSG(4326)
+            
+            dst_layer = dst_ds.CreateLayer("polygonized", srs=srs_wgs84)
             if dst_layer is None:
                 raise Exception(f"Failed to create layer in vector file {vector_path}.")
             
@@ -354,6 +358,15 @@ class DataTrans(object):
 
             srcband = src_ds.GetRasterBand(1)
 
+            # 获取栅格的空间参考系统
+            src_srs = osr.SpatialReference()
+            src_srs.ImportFromWkt(src_ds.GetProjection())
+
+            # 如果栅格不是WGS84坐标系，则进行坐标转换
+            if not src_srs.IsSame(srs_wgs84):
+                dst_ds_warped = gdal.AutoCreateWarpedVRT(src_ds, src_ds.GetProjection(), srs_wgs84.ExportToWkt())
+                srcband = dst_ds_warped.GetRasterBand(1)
+
             # 创建临时矢量文件
             temp_ds = drv.CreateDataSource('/vsimem/temp.shp')
             if temp_ds is None:
@@ -361,7 +374,7 @@ class DataTrans(object):
                 src_ds = None
                 continue
 
-            temp_layer = temp_ds.CreateLayer("polygonized", srs=None)
+            temp_layer = temp_ds.CreateLayer("polygonized", srs=srs_wgs84)
             if temp_layer is None:
                 print("Failed to create layer in temporary vector file. Skipping.")
                 temp_ds = None
@@ -418,7 +431,8 @@ class DataTrans(object):
 
         # 清理
         dst_ds = None
-        
+
+
 try:
     import torch
     from torchvision import transforms
@@ -634,12 +648,6 @@ class DataCrop(object):
         return minx, maxx, miny, maxy
 
     @staticmethod
-    def get_nodata_value(dataset):
-        """获取栅格数据集的 NoData 值"""
-        band = dataset.GetRasterBand(1)  # 假设我们关心第一个波段
-        return band.GetNoDataValue()
-
-    @staticmethod
     def calculate_intersection(extents:list):
         """
         计算一系列范围的交集
@@ -649,18 +657,6 @@ class DataCrop(object):
         maxx = min(extent[1] for extent in extents)
         miny = max(extent[2] for extent in extents)
         maxy = min(extent[3] for extent in extents)
-        return minx, maxx, miny, maxy
-        
-    @staticmethod
-    def calculate_union(extents):
-        """
-        计算一系列范围的并集
-        extents : [get_extent(ds) for ds in datasets]
-        """
-        minx = min(extent[0] for extent in extents)
-        maxx = max(extent[1] for extent in extents)
-        miny = min(extent[2] for extent in extents)
-        maxy = max(extent[3] for extent in extents)
         return minx, maxx, miny, maxy
 
     @staticmethod
@@ -706,38 +702,26 @@ class DataCrop(object):
             gdal.Warp(output_file, ds, outputBounds=[minx, miny, maxx, maxy], cropToCutline=True)
             ds = None  # 关闭文件
     
-    @staticmethod
-    def expend_datasets(datasets, file_names, minx, miny, maxx, maxy, nodata_value=None):
-        """裁剪数据集集合，使用原始文件名列表来命名输出文件"""
-        for ds, name in zip(datasets, file_names):
-            if nodata_value==None:
-                nodata_value = DataCrop.get_nodata_value(ds)
-            output_file = f'cropped_{name}'
-            gdal.Warp(output_file, ds, outputBounds=[minx, miny, maxx, maxy], dstNodata=nodata_value)
-            ds = None  # 关闭文件
-# import os
-# from osgeo import gdal
-# from PackageDeepLearn.utils.DataIOTrans import DataIO,DataCrop
-# os.chdir(r'D:\BaiduSyncdisk\02_论文相关\在投\几何畸变_精化\文章\TGAS\revised_1\数据\Generated_DEMs\Extract')
-# # # 获取所有TIF文件的路径
-# tif_files = [file for file in os.listdir('.') if file.endswith('.tif')]
+    # os.chdir(r'D:\BaiduSyncdisk\02_论文相关\在写\几何畸变\数据\小范围对比\SAM提取结果\test')
+    # # 获取所有TIF文件的路径
+    # tif_files = [file for file in os.listdir('.') if file.endswith('.tif')]
 
-# # 打开所有栅格数据集
-# datasets = [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
+    # # 打开所有栅格数据集
+    # datasets = [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
 
-# # 检查投影一致性
-# if DataCrop.check_projection_consistency(datasets):
-#     # 如果投影一致，直接获取交集范围并裁剪
-#     extents = [DataCrop.get_extent(ds) for ds in datasets]
-#     minx, maxx, miny, maxy = DataCrop.calculate_intersection(extents)
-#     DataCrop.crop_datasets(datasets, tif_files, minx, miny, maxx, maxy)
-# else:
-#     # 如果投影不一致，重投影到目标投影，然后裁剪
-#     target_projection = gdal.Open(tif_files[0], gdal.GA_ReadOnly).GetProjection()  # 假设以第一个文件为目标投影
-#     x_res, y_res = 30, 30  # 示例分辨率，可以根据需要调整
-#     reprojected_datasets = DataCrop.reproject_datasets(datasets, target_projection, x_res, y_res)
-#     extents = [DataCrop.get_extent(ds) for ds in reprojected_datasets]
-#     minx, maxx, miny, maxy = DataCrop.calculate_intersection(extents)
-#     DataCrop.crop_datasets(reprojected_datasets, tif_files, minx, miny, maxx, maxy)
+    # # 检查投影一致性
+    # if check_projection_consistency(datasets):
+    #     # 如果投影一致，直接获取交集范围并裁剪
+    #     extents = [get_extent(ds) for ds in datasets]
+    #     minx, maxx, miny, maxy = calculate_intersection(extents)
+    #     crop_datasets(datasets, tif_files, minx, miny, maxx, maxy)
+    # else:
+    #     # 如果投影不一致，重投影到目标投影，然后裁剪
+    #     target_projection = gdal.Open(tif_files[0], gdal.GA_ReadOnly).GetProjection()  # 假设以第一个文件为目标投影
+    #     x_res, y_res = 10, 10  # 示例分辨率，可以根据需要调整
+    #     reprojected_datasets = reproject_datasets(datasets, target_projection, x_res, y_res)
+    #     extents = [get_extent(ds) for ds in reprojected_datasets]
+    #     minx, maxx, miny, maxy = calculate_intersection(extents)
+    #     crop_datasets(reprojected_datasets, tif_files, minx, miny, maxx, maxy)
 
-# print(f"Processed all images. Intersection extent: {minx}, {maxx}, {miny}, {maxy}")
+    # print(f"Processed all images. Intersection extent: {minx}, {maxx}, {miny}, {maxy}")
