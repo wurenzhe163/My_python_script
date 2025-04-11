@@ -3,6 +3,8 @@ import os
 from osgeo import gdal
 from tqdm import tqdm
 from osgeo import gdal, ogr, osr
+import rasterio
+from rasterio import mask
 from PackageDeepLearn.utils import Statistical_Methods
 
 search_files = lambda path : sorted([os.path.join(path,f) for f in os.listdir(path)])
@@ -701,27 +703,44 @@ class DataCrop(object):
             output_file = f'cropped_{name}'
             gdal.Warp(output_file, ds, outputBounds=[minx, miny, maxx, maxy], cropToCutline=True)
             ds = None  # 关闭文件
+
+    @staticmethod
+    def clip_raster_with_shapefile(raster_path, geometry):
+        '''
+        矢量裁剪栅格，geometry就是geopandas读取的
+        '''
+        with rasterio.open(raster_path) as src:
+            # 将单个Polygon转换为GeoJSON形式并进行裁剪
+            shapes = [geometry.__geo_interface__]
+            # 使用mask来裁剪栅格数据
+            out_image, out_transform = mask(src, shapes, crop=True)
+            out_image = out_image[0]  # 只取第一个波段
+            # 返回裁剪后的图像和变换矩阵
+            return out_image, out_transform
     
-    # os.chdir(r'D:\BaiduSyncdisk\02_论文相关\在写\几何畸变\数据\小范围对比\SAM提取结果\test')
-    # # 获取所有TIF文件的路径
-    # tif_files = [file for file in os.listdir('.') if file.endswith('.tif')]
+# from osgeo import gdal
+# import os
+# from PackageDeepLearn.utils import DataIOTrans
+# os.chdir(r'D:\BaiduSyncdisk\02_论文相关\在写\几何畸变\数据\小范围对比\SAM提取结果\test')
+# # 获取所有TIF文件的路径
+# tif_files = [file for file in os.listdir('.') if file.endswith('.tif')]
 
-    # # 打开所有栅格数据集
-    # datasets = [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
+# # 打开所有栅格数据集
+# datasets = [gdal.Open(tif, gdal.GA_ReadOnly) for tif in tif_files]
 
-    # # 检查投影一致性
-    # if check_projection_consistency(datasets):
-    #     # 如果投影一致，直接获取交集范围并裁剪
-    #     extents = [get_extent(ds) for ds in datasets]
-    #     minx, maxx, miny, maxy = calculate_intersection(extents)
-    #     crop_datasets(datasets, tif_files, minx, miny, maxx, maxy)
-    # else:
-    #     # 如果投影不一致，重投影到目标投影，然后裁剪
-    #     target_projection = gdal.Open(tif_files[0], gdal.GA_ReadOnly).GetProjection()  # 假设以第一个文件为目标投影
-    #     x_res, y_res = 10, 10  # 示例分辨率，可以根据需要调整
-    #     reprojected_datasets = reproject_datasets(datasets, target_projection, x_res, y_res)
-    #     extents = [get_extent(ds) for ds in reprojected_datasets]
-    #     minx, maxx, miny, maxy = calculate_intersection(extents)
-    #     crop_datasets(reprojected_datasets, tif_files, minx, miny, maxx, maxy)
+# # 检查投影一致性
+# if DataIOTrans.DataCrop.check_projection_consistency(datasets):
+#     # 如果投影一致，直接获取交集范围并裁剪
+#     extents = [DataIOTrans.DataCrop.get_extent(ds) for ds in datasets]
+#     minx, maxx, miny, maxy = DataIOTrans.DataCrop.calculate_intersection(extents)
+#     DataIOTrans.DataCrop.crop_datasets(datasets, tif_files, minx, miny, maxx, maxy)
+# else:
+#     # 如果投影不一致，重投影到目标投影，然后裁剪
+#     target_projection = gdal.Open(tif_files[0], gdal.GA_ReadOnly).GetProjection()  # 假设以第一个文件为目标投影
+#     x_res, y_res = 10, 10  # 示例分辨率，可以根据需要调整
+#     reprojected_datasets = DataIOTrans.DataCrop.reproject_datasets(datasets, target_projection, x_res, y_res)
+#     extents = [DataIOTrans.DataCrop.get_extent(ds) for ds in reprojected_datasets]
+#     minx, maxx, miny, maxy = DataIOTrans.DataCrop.calculate_intersection(extents)
+#     DataIOTrans.DataCrop.crop_datasets(reprojected_datasets, tif_files, minx, miny, maxx, maxy)
 
-    # print(f"Processed all images. Intersection extent: {minx}, {maxx}, {miny}, {maxy}")
+# print(f"Processed all images. Intersection extent: {minx}, {maxx}, {miny}, {maxy}")
